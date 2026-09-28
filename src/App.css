@@ -208,5 +208,26 @@
 .client-card span { overflow-wrap: anywhere; font-size: 13px; }
 .app-dialog { max-height: 92dvh; overflow-y: auto; }
 .main-content { padding-top: env(safe-area-inset-top); }
+.install-link { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; margin-top: 14px; padding: 10px 12px; border: 1px solid #c9c1b1; border-radius: 12px; background: transparent; color: #2c3b4d; font-size: 13px; font-weight: 700; }
+.install-link svg { flex-shrink: 0; }
+.install-dialog [data-slot="dialog-title"] { display: flex; align-items: center; gap: 9px; padding-right: 24px; }
+.install-instructions h3 { margin: 0 0 8px; font-weight: 750; }
+.install-instructions ol { list-style: decimal; padding-left: 22px; margin: 0; }
+.install-instructions li + li { margin-top: 8px; }
+.install-instructions p { margin: 0; }
+.install-instructions { line-height: 1.5; }
+@media (display-mode: standalone) { .install-link { display: none; } }
+@media (max-width: 899px) {
+  .main-content { padding-bottom: calc(100px + env(safe-area-inset-bottom)); padding-left: max(15px, env(safe-area-inset-left)); padding-right: max(15px, env(safe-area-inset-right)); }
+  .finish-bar { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .section-title { flex-wrap: wrap; }
+  .client-context > .text-back { min-width: 0; overflow-wrap: anywhere; }
+  .client-context > span { flex-shrink: 0; }
+  .exercise-result { max-width: 36%; }
+  .exercise-result b, .exercise-result small { white-space: normal; overflow-wrap: anywhere; }
+  .search-field input, .field input, .field textarea, .field select, .app-dialog > input { font-size: 16px; }
+  .edit-scroll, .picker-list { overscroll-behavior-y: contain; }
+  .app-dialog, .picker-dialog { max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 32px); }
+}
 .edit-sheet [data-slot="sheet-close"], .preview-dialog [data-slot="dialog-close"] { top: max(12px, env(safe-area-inset-top)); }
 @media (max-width: 390px) { .hero-icon { display: none; } .workout-card { padding: 12px; gap: 6px; } .workout-number { flex-basis: 22px; width: 22px; } .section-title h2 { font-size: 18px; } }

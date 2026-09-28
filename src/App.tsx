@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { imageToDataUrl, loadData, saveData, validateData, type AppData, type Plan, type Result, type Client, type Technique } from './storage'
 import { type Exercise } from './seed'
 import { Gallery } from './Gallery'
+import { InstallApp } from './InstallApp'
 import './App.css'
 
 type Tab = 'catalog' | 'plans' | 'journal' | 'clients'
@@ -43,6 +44,7 @@ function App() {
   const [picker, setPicker] = useState(false)
   const [pickerQuery, setPickerQuery] = useState('')
   const [settings, setSettings] = useState(false)
+  const [installOpen, setInstallOpen] = useState(false)
   const [imagePreview, setImagePreview] = useState<{ images: string[]; name: string; index: number } | null>(null)
   const [clientId, setClientId] = useState<string | null>(null)
   const [clientForm, setClientForm] = useState<Client | null>(null)
@@ -160,7 +162,7 @@ function App() {
         <div className="page-top"><span className="eyebrow">ВАША БИБЛИОТЕКА</span><button className="icon-button" aria-label="Данные и настройки" onClick={() => setSettings(true)}><Settings2 size={21} /></button></div>
         <div className="page-heading"><h1>Упражнения<span className="heading-dot">.</span></h1></div>
         <div className="hero-card"><div><h2>ДИСЦИПЛИНА</h2><p>это решение делать то, чего очень не хочется делать, чтобы достичь того, чего очень хочется достичь.</p></div><div className="hero-icon"><Activity size={36} /></div></div>
-        <div className="section-title"><h2>Каталог</h2><span>{filtered.length} найдено</span></div>
+        <button className="install-link" onClick={() => setInstallOpen(true)}><Download size={17} /> На главный экран — как приложение <ArrowRight size={17} /></button><div className="section-title"><h2>Каталог</h2><span>{filtered.length} найдено</span></div>
         <div className="search-field"><Search size={19} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти упражнение" aria-label="Поиск упражнений" />{query && <button aria-label="Очистить поиск" onClick={() => setQuery('')}><X size={18} /></button>}</div>
         <div className="chips" aria-label="Группы мышц">{groups.map((item) => <button key={item} className={group === item ? 'selected' : ''} onClick={() => setGroup(item)}>{item}</button>)}</div>
         <div className="filter-row"><div className="kind-switch"><button className={kind === 'Все' ? 'selected' : ''} onClick={() => setKind('Все')}>Все</button><button className={kind === 'База' ? 'selected' : ''} onClick={() => setKind('База')}>База</button><button className={kind === 'Доп' ? 'selected' : ''} onClick={() => setKind('Доп')}>Доп</button></div><label className="sort-select"><ListFilter size={17} /><select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Сортировка"><option value="default">По списку</option><option value="name">По названию</option><option value="weight-desc">Вес ↓</option><option value="weight-asc">Вес ↑</option></select><ChevronDown size={15} /></label></div>
@@ -217,7 +219,8 @@ function App() {
       <div className="field"><label htmlFor="technique-comment">Комментарий</label><Textarea id="technique-comment" placeholder="Что нужно исправить в технике…" value={techniqueForm.comment} onChange={(event) => setTechniqueForm({ ...techniqueForm, comment: event.target.value })} /></div>
       <Button className="primary-button" onClick={() => saveTechnique()}>Сохранить пометку</Button><Button variant="outline" onClick={() => saveTechnique(true)}><Trash2 size={16} /> Удалить пометку и комментарий</Button>
     </DialogContent></Dialog>
-    <Dialog open={settings} onOpenChange={setSettings}><DialogContent className="app-dialog"><DialogHeader><DialogTitle>Данные и настройки</DialogTitle><DialogDescription>Резервная копия хранит упражнения, фото, клиентов, программы, пометки и журнал.</DialogDescription></DialogHeader><div className="settings-actions"><Button variant="outline" onClick={exportBackup}><Download size={18} /> Скачать резервную копию</Button><Button variant="outline" onClick={() => importRef.current?.click()}><Upload size={18} /> Восстановить из файла</Button><input ref={importRef} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) importBackup(file) }} /></div><p className="settings-note">Данные доступны только в этом браузере. Скачайте копию перед очисткой данных браузера или переносом на другое устройство.</p></DialogContent></Dialog>
+    <Dialog open={settings} onOpenChange={setSettings}><DialogContent className="app-dialog"><DialogHeader><DialogTitle>Данные и настройки</DialogTitle><DialogDescription>Резервная копия хранит упражнения, фото, клиентов, программы, пометки и журнал.</DialogDescription></DialogHeader><div className="settings-actions"><Button variant="outline" onClick={() => { setSettings(false); setInstallOpen(true) }}><Download size={18} /> Установить как приложение</Button><Button variant="outline" onClick={exportBackup}><Download size={18} /> Скачать резервную копию</Button><Button variant="outline" onClick={() => importRef.current?.click()}><Upload size={18} /> Восстановить из файла</Button><input ref={importRef} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) importBackup(file) }} /></div><p className="settings-note">Данные доступны только в этом браузере. Скачайте копию перед очисткой данных браузера или переносом на другое устройство.</p></DialogContent></Dialog>
+    <InstallApp open={installOpen} onOpenChange={setInstallOpen} />
     {notice && <div className="toast" role="status">{notice}</div>}
   </div>
 }
