@@ -11,15 +11,15 @@
 }
 :root {
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #1d2729; background: #f7f8f6; font-synthesis: none; text-rendering: optimizeLegibility;
-  --radius: 12px; --background: #fff; --foreground: #1d2729; --primary: #164d47; --primary-foreground: #fff;
-  --secondary: #eef4f0; --secondary-foreground: #164d47; --muted: #f2f4f2; --muted-foreground: #778581;
-  --border: #e4e9e5; --input: #e4e9e5; --ring: #5a9d90; --card: #fff; --card-foreground: #1d2729;
-  --popover: #fff; --popover-foreground: #1d2729; --destructive: #c54646;
+  color: #1b2632; background: #eee9df; font-synthesis: none; text-rendering: optimizeLegibility;
+  --radius: 12px; --background: #fff; --foreground: #1b2632; --primary: #1b2632; --primary-foreground: #fff;
+  --secondary: #e3dccf; --secondary-foreground: #1b2632; --muted: #eee9df; --muted-foreground: #626b74;
+  --border: #e3dccf; --input: #e3dccf; --ring: #626b74; --card: #fff; --card-foreground: #1b2632;
+  --popover: #fff; --popover-foreground: #1b2632; --destructive: #a35139;
 }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
-button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #8dc7b6; outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #626b74; outline-offset: 2px; }

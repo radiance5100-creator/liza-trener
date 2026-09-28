@@ -1,13 +1,15 @@
 import { openDB } from 'idb'
 import { initialExercises, type Exercise } from './seed'
 
-export type Plan = { id: string; name: string; exerciseIds: string[] }
+export type Plan = { id: string; name: string; exerciseIds: string[]; clientId?: string }
+export type Technique = { flagged: boolean; comment: string }
+export type Client = { id: string; name: string; contact: string; note: string; results: Result[]; techniques: Record<string, Technique> }
 export type Result = { exerciseId: string; name: string; weight: string; reps: string }
-export type Session = { id: string; planName: string; date: string; results: Result[] }
-export type Draft = { planName: string; results: Result[] }
-export type AppData = { version: 1; exercises: Exercise[]; plans: Plan[]; sessions: Session[]; draft?: Draft | null }
+export type Session = { id: string; planName: string; date: string; results: Result[]; clientId?: string }
+export type Draft = { planName: string; results: Result[]; clientId?: string }
+export type AppData = { version: 1; clients: Client[]; techniques: Record<string, Technique>; exercises: Exercise[]; plans: Plan[]; sessions: Session[]; draft?: Draft | null }
 
-export const defaultData = (): AppData => ({ version: 1, exercises: initialExercises, plans: [], sessions: [] })
+export const defaultData = (): AppData => ({ version: 1, clients: [], techniques: {}, exercises: initialExercises, plans: [], sessions: [] })
 
 const database = openDB('liza-trener', 1, {
   upgrade(db) { db.createObjectStore('app') },
@@ -41,7 +43,13 @@ export function validateData(value: unknown): AppData {
   if (data.draft && (typeof data.draft.planName !== 'string' || !Array.isArray(data.draft.results) || !data.draft.results.every(validResult))) {
     throw new Error('Повреждены данные текущей тренировки')
   }
-  return data as AppData
+  const validTechniques = (value: unknown) => !!value && typeof value === 'object' && !Array.isArray(value) && Object.values(value).every((item) => item && typeof item.flagged === 'boolean' && typeof item.comment === 'string')
+  const clients = data.clients ?? []
+  if (!Array.isArray(clients) || !clients.every((client) => client && typeof client.id === 'string' && typeof client.name === 'string' && typeof client.contact === 'string' && typeof client.note === 'string' && Array.isArray(client.results) && client.results.every(validResult) && validTechniques(client.techniques)) || new Set(clients.map((client) => client.id)).size !== clients.length) throw new Error('Повреждены карточки клиентов')
+  if (!validTechniques(data.techniques ?? {})) throw new Error('Повреждены пометки о технике')
+  const validOwner = (item: { clientId?: string }) => item.clientId === undefined || clients.some((client) => client.id === item.clientId)
+  if (!data.plans.every(validOwner) || !data.sessions.every(validOwner) || (data.draft && !validOwner(data.draft))) throw new Error('Не найден клиент для тренировки')
+  return { ...data, clients, techniques: data.techniques ?? {} } as AppData
 }
 
 export async function imageToDataUrl(file: File): Promise<string> {
