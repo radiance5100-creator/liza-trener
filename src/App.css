@@ -181,9 +181,6 @@
 .gallery-slide { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
 .gallery-slide button { display: block; width: 100%; padding: 0; border: 0; background: none; }
 .gallery-slide img { display: block; height: 230px; width: 100%; object-fit: contain; }
-.gallery-controls { display: flex; align-items: center; justify-content: center; gap: 18px; padding-top: 6px; font-size: 12px; font-weight: 700; }
-.gallery-controls button { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #c9c1b1; border-radius: 50%; background: #eee9df; color: #2c3b4d; }
-.gallery-controls button:disabled { opacity: .3; }
 .gallery-empty { background: #eee9df; color: #626b74; padding: 12px; font-size: 12px; border-radius: 10px; margin-bottom: 14px; }
 .preview-dialog { inset: 0 !important; transform: none !important; translate: none !important; width: 100vw !important; max-width: 100vw !important; height: 100dvh !important; max-height: 100dvh !important; border-radius: 0 !important; background: #1b2632 !important; color: #eee9df; display: flex !important; flex-direction: column; padding: max(20px, env(safe-area-inset-top)) 18px max(16px, env(safe-area-inset-bottom)) !important; }
 .preview-dialog [data-slot="dialog-header"] { padding-right: 30px; }
@@ -192,15 +189,11 @@
 .preview-dialog .gallery-track { flex: 1; min-height: 0; }
 .preview-dialog .gallery-slide { display: flex; align-items: center; justify-content: center; }
 .preview-dialog .gallery-slide img { height: 100%; max-height: 100%; width: 100%; object-fit: contain; }
-.preview-dialog .gallery-controls { flex-shrink: 0; }
 .workout-title { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
 .workout-title h3 { margin: 10px 0 14px; }
 .technique-button { flex-shrink: 0; display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #c9c1b1; border-radius: 50%; background: #eee9df; color: #626b74; }
 .technique-button.flagged { background: #ffb162; color: #1b2632; border-color: #a35139; }
-.technique-warning { margin: 0 0 12px; background: #ffb162; color: #1b2632; border-radius: 10px; padding: 12px; font-size: 12px; font-weight: 700; }
 .technique-comment, .client-note { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 14px; font-size: 14px; line-height: 1.5; }
-.technique-toggle { display: flex; align-items: center; gap: 10px; min-height: 44px; }
-.technique-toggle input { width: 20px; height: 20px; accent-color: #a35139; }
 .client-context { display: flex; justify-content: space-between; gap: 10px; align-items: center; border-bottom: 1px solid #c9c1b1; padding: 12px 0; }
 .client-context span { font-size: 11px; color: #626b74; }
 .client-card { display: grid; grid-template-columns: 1fr auto; gap: 12px; text-align: left; padding: 22px; background: white; color: #2c3b4d; border: 1px solid #c9c1b1; border-radius: 20px; }
@@ -230,4 +223,21 @@
   .app-dialog, .picker-dialog { max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 32px); }
 }
 .edit-sheet [data-slot="sheet-close"], .preview-dialog [data-slot="dialog-close"] { top: max(12px, env(safe-area-inset-top)); }
+.edit-scroll { padding: 10px 6px 22px; }
+.edit-scroll .field { min-width: 0; }
+.edit-scroll input:focus-visible, .edit-scroll textarea:focus-visible, .edit-scroll select:focus-visible { outline-offset: 0; }
+.technique-button { width: 36px; height: 36px; min-width: 36px; border: 0; background: transparent; color: #8c9298; }
+.technique-button.flagged { border: 0; background: transparent; color: #a35139; }
+.technique-button.flagged svg { background: #ffb162; border-radius: 50%; }
+.reorder-hint { margin: 0 0 4px; color: #626b74; font-size: 12px; }
+.sortable-row { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 6px 10px; }
+.drag-handle { grid-column: 1; grid-row: 1 / 3; align-self: stretch; min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; background: #eee9df; color: #626b74; border: 0; border-radius: 10px; touch-action: none; user-select: none; cursor: grab; }
+.drag-handle span { font-size: 11px; }
+.dragging { opacity: .65; border-color: #a35139; }
+.dragging .drag-handle { cursor: grabbing; }
+.drop-target { border-color: #a35139; box-shadow: 0 -3px 0 #ffb162; }
+.sortable-row .plan-entry { grid-column: 2; display: grid; gap: 4px; padding: 4px 0; min-width: 0; }
+.sortable-row .plan-controls { grid-column: 2; display: flex; justify-content: flex-end; gap: 4px; }
+.sortable-row .plan-controls button { width: 36px; min-height: 44px; border-radius: 8px; }
+.sortable-row .plan-controls .replace-exercise { width: auto; display: flex; gap: 6px; padding: 0 10px; font-size: 12px; color: #2c3b4d; background: #eee9df; }
 @media (max-width: 390px) { .hero-icon { display: none; } .workout-card { padding: 12px; gap: 6px; } .workout-number { flex-basis: 22px; width: 22px; } .section-title h2 { font-size: 18px; } }
