@@ -1,217 +1,2825 @@
-import { useEffect, useRef, useState } from 'react'
-import { Activity, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Download, Dumbbell, History, ImagePlus, ListFilter, Pencil, Play, Plus, Search, Settings2, Trash2, Upload, Users, CircleHelp, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { imageToDataUrl, loadData, saveData, validateData, type AppData, type Plan, type Result, type Client, type Technique } from './storage'
-import { type Exercise } from './seed'
-import { Gallery } from './Gallery'
-import { PlanExerciseList } from './PlanExerciseList'
-import { InstallApp } from './InstallApp'
-import './App.css'
+import { useState, useRef, useEffect } from "react";
+import {
+  CalendarDays,
+  Users,
+  Dumbbell,
+  MoreHorizontal,
+  ArrowLeft,
+  ArrowRight,
+  Plus,
+  Check,
+  X,
+  ChevronRight,
+  ChevronLeft,
+  Clock3,
+  Play,
+  Search,
+  GripVertical,
+  Copy,
+  Replace,
+  Trash2,
+  CircleHelp,
+  CheckCircle2,
+  CalendarPlus,
+  BookOpen,
+  UserRound,
+  Archive,
+} from "lucide-react";
+import type { Exercise } from "./seed";
+import { Gallery } from "./Gallery";
+import { ExerciseEditor } from "./ExerciseEditor";
+import {
+  loadTraining,
+  saveTraining,
+  importTraining,
+  getRecovery,
+} from "./training-db";
+import {
+  uid,
+  iso,
+  format,
+  newProgram,
+  entry,
+  participant,
+  appointment,
+  finish,
+  startAppointment,
+  overlaps,
+  resultHistory,
+  migrate,
+  type Day,
+  type Program,
+  type Person,
+  type Participant,
+  type Appointment,
+  type Store,
+} from "./training";
+import { InstallHelp } from "./InstallHelp";
+import "./trainer.css";
 
-type Tab = 'catalog' | 'plans' | 'journal' | 'clients'
-const groups = ['Все', 'Ноги', 'Спина', 'Грудь', 'Плечи', 'Трицепс', 'Бицепс', 'Пресс', 'Икры', 'Предплечья']
-const sections = ['Ноги', 'Спина', 'Грудь', 'Плечи', 'Малые мышечные группы', 'Пресс']
-const sectionOf = (group: string) => ['Трицепс', 'Бицепс', 'Икры', 'Предплечья'].includes(group) ? 'Малые мышечные группы' : group
-const photos = (exercise?: Exercise | null) => exercise?.images.filter((image): image is string => !!image) ?? []
-const dateLabel = (value: string) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
-const approach = (weight: string, reps: string) => weight || reps ? `${weight || '—'} × ${reps || '—'}` : 'Нет данных'
-const weightNumber = (value: string) => Number.parseFloat(value.replace(',', '.')) || 0
-const numericWeight = (value: string) => /^\d+(?:[,.]\d+)?$/.test(value.trim())
-const newId = () => typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
-const exerciseCount = (count: number) => `${count} ${count % 10 === 1 && count % 100 !== 11 ? 'упражнение' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'упражнения' : 'упражнений'}`
-function recordHistory(exercise: Exercise, weight: string, reps: string, date: string) {
-  const initial = exercise.history.length === 0 && (exercise.weight || exercise.reps)
-    ? [{ weight: exercise.weight, reps: exercise.reps, date: '' }]
-    : []
-  return [{ weight, reps, date }, ...exercise.history, ...initial].slice(0, 3)
+type Route = {
+  page: string;
+  person?: string;
+  program?: string;
+  day?: string;
+  appointment?: string;
+};
+const dayOffset = (value: string, offset: number) => {
+  const date = new Date(value + "T12:00:00");
+  date.setDate(date.getDate() + offset);
+  return iso(date);
+};
+const labelDate = (
+  date: string,
+  options: Intl.DateTimeFormatOptions = { day: "numeric", month: "long" },
+) => new Date(date + "T12:00:00").toLocaleDateString("ru-RU", options);
+const sections = [
+  "Ноги",
+  "Спина",
+  "Грудь",
+  "Плечи",
+  "Малые мышечные группы",
+  "Пресс",
+];
+const quantity = (n: number, forms = ["упражнение", "упражнения", "упражнений"]) => `${n} ${forms[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 1 : 2]}`;
+const section = (group: string) =>
+  ["Бицепс", "Трицепс", "Икры", "Предплечья"].includes(group)
+    ? sections[4]
+    : group;
+export function Avatar({
+  person,
+  small = false,
+}: {
+  person: Person;
+  small?: boolean;
+}) {
+  return (
+    <span className={"avatar " + (small ? "small " : "") + person.id}>
+      {person.short}
+    </span>
+  );
+}
+function Picture({ exercise }: { exercise: Exercise }) {
+  const photo = exercise.images.find(Boolean);
+  return (
+    <div className="mini-photo">
+      {photo ? <img src={photo} alt="" /> : <Dumbbell size={19} />}
+    </div>
+  );
 }
 
-function App() {
-  const [data, setData] = useState<AppData | null>(null)
-  const [tab, setTab] = useState<Tab>('catalog')
-  const [query, setQuery] = useState('')
-  const [group, setGroup] = useState('Все')
-  const [kind, setKind] = useState('Все')
-  const [sort, setSort] = useState('default')
-  const [editing, setEditing] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState<Exercise | null>(null)
-  const [planDialog, setPlanDialog] = useState(false)
-  const [planName, setPlanName] = useState('')
-  const [currentPlan, setCurrentPlan] = useState<string | null>(null)
-  const [picker, setPicker] = useState(false)
-  const [pickerQuery, setPickerQuery] = useState('')
-  const [settings, setSettings] = useState(false)
-  const [installOpen, setInstallOpen] = useState(false)
-  const [imagePreview, setImagePreview] = useState<{ images: string[]; name: string; index: number } | null>(null)
-  const [clientId, setClientId] = useState<string | null>(null)
-  const [clientForm, setClientForm] = useState<Client | null>(null)
-  const [replacingId, setReplacingId] = useState<string | null>(null)
-  const [showDraft, setShowDraft] = useState(true)
-  const [notice, setNotice] = useState('')
-  const importRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { loadData().then(setData).catch(() => setNotice('Не удалось открыть данные браузера')) }, [])
-  useEffect(() => { if (data) saveData(data).catch(() => setNotice('Не удалось сохранить изменения. Проверьте свободное место.')) }, [data])
-  const exercises = data?.exercises ?? []
-  const client = data?.clients.find((item) => item.id === clientId)
-  const plans = (data?.plans ?? []).filter((plan) => plan.clientId === (clientId ?? undefined))
-  const sessions = (data?.sessions ?? []).filter((session) => session.clientId === (clientId ?? undefined))
-  const draft = data?.draft
-  const selectedPlan = plans.find((plan) => plan.id === currentPlan)
-  const editingExercise = exercises.find((exercise) => exercise.id === editing)
-  const filtered = (() => {
-    const normalized = query.trim().toLocaleLowerCase('ru')
-    const result = exercises.filter((exercise) => (group === 'Все' || exercise.group === group) && (kind === 'Все' || exercise.kind === kind) && (!normalized || `${exercise.name} ${exercise.note}`.toLocaleLowerCase('ru').includes(normalized)))
-    if (sort === 'name') result.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-    if (sort === 'weight-desc') result.sort((a, b) => weightNumber(b.weight) - weightNumber(a.weight))
-    if (sort === 'weight-asc') result.sort((a, b) => weightNumber(a.weight) - weightNumber(b.weight))
-    return result
-  })()
-  const updateData = (change: (current: AppData) => AppData) => setData((current) => current ? change(current) : current)
-  function flash(message: string) { setNotice(message); window.setTimeout(() => setNotice(''), 3500) }
-  function openExercise(exercise: Exercise) { setEditing(exercise.id); setEditForm({ ...exercise, images: [...exercise.images] as Exercise['images'] }) }
-  function saveExercise() {
-    if (!editForm || !editForm.name.trim()) return
-    const changed = editingExercise && (editForm.weight !== editingExercise.weight || editForm.reps !== editingExercise.reps)
-    const next: Exercise = { ...editForm, name: editForm.name.trim(), history: changed && editingExercise ? recordHistory(editingExercise, editForm.weight, editForm.reps, new Date().toISOString()) : editForm.history }
-    updateData((current) => ({ ...current, exercises: current.exercises.map((item) => item.id === next.id ? next : item) }))
-    setEditing(null); setEditForm(null); flash('Упражнение сохранено')
-  }
-  async function uploadImage(file: File, position: 0 | 1) {
-    try { const image = await imageToDataUrl(file); setEditForm((form) => form ? { ...form, images: form.images.map((old, index) => index === position ? image : old) as Exercise['images'] } : form) }
-    catch (error) { flash(error instanceof Error ? error.message : 'Не удалось загрузить изображение') }
-  }
-  function createPlan() {
-    const name = planName.trim(); if (!name) return
-    const plan: Plan = { id: newId(), name, exerciseIds: [], clientId: clientId ?? undefined }
-    updateData((current) => ({ ...current, plans: [...current.plans, plan] }))
-    setCurrentPlan(plan.id); setPlanName(''); setPlanDialog(false); setTab('plans')
-  }
-  function updatePlan(id: string, change: (plan: Plan) => Plan) { updateData((current) => ({ ...current, plans: current.plans.map((plan) => plan.id === id ? change(plan) : plan) })) }
-  function moveInPlan(id: string, index: number, delta: number) { updatePlan(id, (plan) => { const exerciseIds = [...plan.exerciseIds]; const [item] = exerciseIds.splice(index, 1); exerciseIds.splice(index + delta, 0, item); return { ...plan, exerciseIds } }) }
-  function startPlan(plan: Plan) {
-    if (draft && !window.confirm('Начать новую тренировку? Отложенная тренировка будет заменена.')) return
-    const results: Result[] = plan.exerciseIds.flatMap((id) => { const exercise = exercises.find((item) => item.id === id); return exercise ? [{ exerciseId: id, name: exercise.name, weight: plan.clientId ? (data?.clients.find((item) => item.id === plan.clientId)?.results.find((item) => item.exerciseId === id)?.weight ?? '') : exercise.weight, reps: plan.clientId ? (data?.clients.find((item) => item.id === plan.clientId)?.results.find((item) => item.exerciseId === id)?.reps ?? '') : exercise.reps }] : [] })
-    updateData((current) => ({ ...current, draft: { planName: plan.name, results, clientId: plan.clientId } }))
-    setShowDraft(true)
-  }
-  function updateDraft(index: number, field: 'weight' | 'reps', value: string) { updateData((current) => !current.draft ? current : ({ ...current, draft: { ...current.draft, results: current.draft.results.map((result, i) => i === index ? { ...result, [field]: value } : result) } })) }
-  function finishWorkout() {
-    if (!draft) return
-    const date = new Date().toISOString()
-    updateData((current) => {
-      if (!current.draft) return current
-      const results = current.draft.results.map((result) => ({ ...result }))
-      return { ...current, draft: null,
-        sessions: [{ id: newId(), planName: current.draft.planName, date, results, clientId: current.draft.clientId }, ...current.sessions],
-        clients: current.clients.map((item) => item.id === current.draft?.clientId ? { ...item, results: [...results, ...item.results.filter((old) => !results.some((result) => result.exerciseId === old.exerciseId))] } : item),
-        exercises: current.draft.clientId ? current.exercises : current.exercises.map((exercise) => { const result = results.find((item) => item.exerciseId === exercise.id); return result ? { ...exercise, weight: result.weight, reps: result.reps, history: recordHistory(exercise, result.weight, result.reps, date) } : exercise }),
+export default function App() {
+  const [data, setData] = useState<Store | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    loadTraining()
+      .then(setData)
+      .catch((e) => setError(String(e.message)));
+  }, []);
+  if (!data)
+    return (
+      <div className="device">
+        <main>
+          <h1>Мой темп</h1>
+          <p role="status">{error || "Загружаем ваши тренировки…"}</p>
+          {error && (
+            <>
+              <p>
+                Исходные данные сохранены. Скачайте их перед восстановлением.
+              </p>
+              <button
+                className="btn primary"
+                onClick={async () =>
+                  download(await getRecovery(), "vosstanovlenie.json")
+                }
+              >
+                Скачать исходные данные
+              </button>
+              <button className="btn soft" onClick={() => location.reload()}>
+                Повторить
+              </button>
+            </>
+          )}
+        </main>
+      </div>
+    );
+  return <Trainer initial={data} />;
+}
+function download(value: unknown, name: string) {
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }),
+  );
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function Trainer({ initial }: { initial: Store }) {
+  const [today, setToday] = useState(iso());
+  useEffect(() => {
+    const id = setInterval(() => setToday(iso()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const saveSequence = useRef(0);
+  const [lightbox, setLightbox] = useState<{
+    id: string;
+    index: number;
+  } | null>(null);
+  const ex = (id: string) => store.exercises.find((e) => e.id === id)!;
+  const photos = (id: string) => (
+    <Gallery
+      key={id}
+      images={ex(id).images.filter((x): x is string => !!x)}
+      name={ex(id).name}
+      onOpen={(index) => setLightbox({ id, index })}
+    />
+  );
+  const [importValue, setImportValue] = useState<Store | null>(null);
+  const [store, setStore] = useState<Store>(initial);
+  const [route, setRoute] = useState<Route>({ page: "today" });
+  const [date, setDate] = useState(today);
+  const [personTab, setPersonTab] = useState("Обзор");
+  const [month, setMonth] = useState(today.slice(0, 7));
+  const [search, setSearch] = useState("");
+  const [group, setGroup] = useState("Все");
+  const [modal, setModal] = useState<any>(null);
+  const [toast, setToast] = useState("");
+  const [undo, setUndo] = useState<((next: Store) => void) | null>(null);
+  const drag = useRef<{ from: number; to: number } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Saving state tracks completion of an external IndexedDB transaction.
+  useEffect(() => {
+    const seq = ++saveSequence.current;
+    // oxlint-disable-next-line react/set-state-in-effect
+    setSaving(true);
+    saveTraining(store)
+      .then(() => {
+        if (seq === saveSequence.current) {
+          setSaveError("");
+          setSaving(false);
+        }
+      })
+      .catch(() => {
+        setSaving(false);
+        setSaveError(
+          "Не удалось сохранить на телефоне. Скачайте резервную копию, прежде чем закрывать приложение.",
+        );
+      });
+  }, [store]);
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (saving || saveError) {
+        e.preventDefault();
+        e.returnValue = "";
       }
-    })
-    setClientId(draft.clientId ?? null); setCurrentPlan(null); setShowDraft(false); setTab('journal'); flash('Тренировка сохранена')
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [saving, saveError]);
+  const modalType = modal?.type,
+    lightboxOpen = !!lightbox;
+  useEffect(() => {
+    if (!modalType && !lightboxOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = document.querySelector<HTMLElement>(
+      lightboxOpen ? ".lightbox" : ".sheet",
+    );
+    const main = document.querySelector<HTMLElement>("main");
+    const nav = document.querySelector<HTMLElement>(".bottom-nav");
+    if (main) main.inert = true;
+    if (nav) nav.inert = true;
+    const nodes = () => [
+      ...dialog!.querySelectorAll<HTMLElement>(
+        'button:not(:disabled),input:not(:disabled),select,textarea,[tabindex="0"]',
+      ),
+    ];
+    (dialog?.querySelector<HTMLElement>("[autofocus]") ?? nodes()[0])?.focus();
+    const keys = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setLightbox(null);
+        setModal(null);
+      }
+      if (e.key === "Tab") {
+        const ns = nodes();
+        if (e.shiftKey && document.activeElement === ns[0]) {
+          e.preventDefault();
+          ns.at(-1)?.focus();
+        } else if (!e.shiftKey && document.activeElement === ns.at(-1)) {
+          e.preventDefault();
+          ns[0]?.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", keys);
+    return () => {
+      if (main) main.inert = false;
+      if (nav) nav.inert = false;
+      document.removeEventListener("keydown", keys);
+      previous?.focus();
+    };
+  }, [modalType, lightboxOpen]);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModal(null);
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, []);
+  useEffect(() => {
+    document.body.style.overflow = modal || lightbox ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [modal, lightbox]);
+  const mutate = (fn: (next: Store) => void) =>
+    setStore((old) => {
+      const next = structuredClone(old);
+      fn(next);
+      return next;
+    });
+  const person = store.people.find((p) => p.id === route.person);
+  const program = person?.programs.find((p) => p.id === route.program);
+  const day = program?.days.find((d) => d.id === route.day);
+  const current = store.appointments.find((a) => a.id === route.appointment);
+  const activeParticipant = current?.participants[current.selected];
+  const participantPosition = useRef(0);
+  const scrollPosition = activeParticipant?.scroll ?? 0;
+  useEffect(() => { participantPosition.current = scrollPosition }, [scrollPosition]);
+  useEffect(() => {
+    if (route.page !== "workout") return;
+    const position = participantPosition.current;
+    requestAnimationFrame(() => window.scrollTo(0, position));
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const scroll = () => {
+      clearTimeout(pending);
+      pending = setTimeout(() => {
+        const y = Math.max(0, window.scrollY);
+        mutate((next) => {
+          const a = next.appointments.find((a) => a.id === route.appointment);
+          if (a) a.participants[a.selected].scroll = y;
+        });
+      }, 200);
+    };
+    window.addEventListener("scroll", scroll, { passive: true });
+    return () => {
+      clearTimeout(pending);
+      window.removeEventListener("scroll", scroll);
+    };
+  }, [route.page, route.appointment, current?.selected]);
+  const personById = (id: string) => store.people.find((p) => p.id === id)!;
+  function flash(message: string) {
+    if (!["Занятие отменено", "Упражнение убрано"].includes(message))
+      setUndo(null);
+    setToast(message);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      setToast("");
+      setUndo(null);
+    }, 6000);
   }
-  function techniqueFor(id: string): Technique {
-    const owner = draft?.clientId
-    return (owner ? data?.clients.find((item) => item.id === owner)?.techniques[id] : data?.techniques[id]) ?? { flagged: false, comment: '' }
+  function go(next: Route) {
+    setRoute(next);
+    setModal(null);
+    setSearch("");
+    setGroup("Все");
+    window.scrollTo(0, 0);
   }
-  function toggleTechnique(id: string) {
-    const change = (items: Record<string, Technique>) => ({ ...items, [id]: { flagged: !items[id]?.flagged, comment: '' } })
-    updateData((current) => draft?.clientId ? { ...current, clients: current.clients.map((item) => item.id === draft.clientId ? { ...item, techniques: change(item.techniques) } : item) } : { ...current, techniques: change(current.techniques) })
+  function editProgram(fn: (program: Program) => void) {
+    mutate((next) =>
+      fn(
+        next.people
+          .find((p) => p.id === route.person)!
+          .programs.find((p) => p.id === route.program)!,
+      ),
+    );
   }
-  function saveClient() {
-    if (!clientForm?.name.trim()) return
-    const next = { ...clientForm, name: clientForm.name.trim() }
-    updateData((current) => ({ ...current, clients: current.clients.some((item) => item.id === next.id) ? current.clients.map((item) => item.id === next.id ? next : item) : [...current.clients, next] }))
-    setClientId(next.id); setCurrentPlan(null); setClientForm(null); setTab('clients')
+  function newSchedule(quick = false, existing?: Appointment) {
+    const sample =
+      existing ??
+      appointment(
+        store,
+        person ? [person.id] : ["self"],
+        new Date().toTimeString().slice(0, 5),
+      );
+    setModal({
+      type: "schedule",
+      ...structuredClone(sample),
+      date: existing?.date ?? date,
+      quick,
+      editing: !!existing,
+    });
   }
-  function exportBackup() {
-    if (!data) return
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }))
-    const link = document.createElement('a'); link.href = url; link.download = `trener-backup-${new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(link); link.click(); link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  function start(id: string) {
+    try {
+      const next = structuredClone(store);
+      const actual = startAppointment(next, id);
+      setStore(next);
+      go({ page: "workout", appointment: actual });
+      if (actual !== id)
+        flash("У участника уже есть тренировка. Продолжаем её.");
+    } catch (e) {
+      flash((e as Error).message);
+    }
   }
-  async function importBackup(file: File) {
-    try { const next = validateData(JSON.parse(await file.text())); if (!window.confirm('Заменить все текущие данные данными из резервной копии?')) return; await saveData(next); setData(next); setSettings(false); setCurrentPlan(null); setClientId(null); flash('Резервная копия восстановлена') }
-    catch (error) { flash(error instanceof Error ? error.message : 'Не удалось открыть файл') }
-    if (importRef.current) importRef.current.value = ''
+  function changeAppointment(fn: (appointment: Appointment) => void) {
+    mutate((next) =>
+      fn(next.appointments.find((a) => a.id === route.appointment)!),
+    );
   }
-  if (!data) return <div className="loading">Загружаем упражнения…</div>
-  return <div className="app-shell">
-    <aside className="desktop-sidebar"><div className="brand"><span className="brand-mark"><Dumbbell size={21} /></span><span>Мой темп<small>ТРЕНИРОВКИ И ПРОГРЕСС</small></span></div><nav className="side-nav" aria-label="Основная навигация"><button className={tab === 'catalog' ? 'active' : ''} onClick={() => { setClientId(null); setCurrentPlan(null); setTab('catalog') }}><BookOpen size={19} /> Упражнения</button><button className={tab === 'plans' ? 'active' : ''} onClick={() => { setClientId(null); setCurrentPlan(null); setTab('plans') }}><Dumbbell size={19} /> Шаблоны</button><button className={tab === 'journal' ? 'active' : ''} onClick={() => { setClientId(null); setCurrentPlan(null); setTab('journal') }}><History size={19} /> Журнал</button><button className={tab === 'clients' ? 'active' : ''} onClick={() => { setCurrentPlan(null); setTab('clients') }}><Users size={19} /> Клиенты</button></nav><button className="sidebar-settings" onClick={() => setSettings(true)}><Settings2 size={19} /> Данные и настройки</button></aside>
-    <main className="main-content">
-      {client && (!draft || !showDraft) && <div className="client-context"><button className="text-back" onClick={() => { setCurrentPlan(null); setTab('clients') }}><Users size={17} /> {client.name}</button><span>Карточка клиента</span></div>}
-      {draft && !showDraft && <button className="resume-banner" onClick={() => setShowDraft(true)}><Play size={16} /> Продолжить тренировку «{draft.planName}» <ArrowRight size={16} /></button>}
-      {draft && showDraft ? <section className="workout-page">
-        <div className="page-top"><button className="icon-button" aria-label="Отложить тренировку" onClick={() => { setClientId(draft.clientId ?? null); setCurrentPlan(null); setShowDraft(false); setTab('plans') }}><ArrowLeft size={21} /></button><span className="eyebrow">АКТИВНАЯ ТРЕНИРОВКА</span><button className="icon-button" aria-label="Отменить тренировку" onClick={() => { if (window.confirm('Отменить текущую тренировку?')) { updateData((current) => ({ ...current, draft: null })); setShowDraft(false) } }}><X size={21} /></button></div>
-        <div className="page-heading"><h1>{draft.planName}</h1><p>{draft.clientId && <><strong>{data.clients.find((item) => item.id === draft.clientId)?.name}</strong><br /></>}Один рабочий подход на каждое упражнение</p></div>
-        <div className="workout-list">{draft.results.map((result, index) => <article className="workout-card" key={`${result.exerciseId}-${index}`}><div className="workout-number">{String(index + 1).padStart(2, '0')}</div><div className="workout-body"><div className="workout-title"><h3>{result.name}</h3><button className={techniqueFor(result.exerciseId).flagged ? 'technique-button flagged' : 'technique-button'} aria-label={'Техника под вопросом: ' + result.name} aria-pressed={techniqueFor(result.exerciseId).flagged} onClick={() => toggleTechnique(result.exerciseId)}><CircleHelp size={16} /></button></div>
-          <Gallery images={photos(exercises.find((item) => item.id === result.exerciseId))} name={result.name} onOpen={(index) => setImagePreview({ images: photos(exercises.find((item) => item.id === result.exerciseId)), name: result.name, index })} />
-          <div className="workout-inputs"><label>{numericWeight(result.weight) || !result.weight ? 'Вес, кг' : 'Нагрузка'}<Input inputMode={numericWeight(result.weight) || !result.weight ? 'decimal' : 'text'} value={result.weight} onChange={(event) => updateDraft(index, 'weight', event.target.value)} aria-label={`Нагрузка: ${result.name}`} /></label><span className="times">×</span><label>Повторы<Input inputMode="numeric" value={result.reps} onChange={(event) => updateDraft(index, 'reps', event.target.value)} aria-label={`Повторы: ${result.name}`} /></label></div></div></article>)}</div>
-        <div className="finish-bar"><Button className="primary-button" onClick={finishWorkout}><Check size={18} /> Завершить тренировку</Button></div>
-      </section> : tab === 'catalog' ? <section>
-        <div className="page-top"><span className="eyebrow">ВАША БИБЛИОТЕКА</span><button className="icon-button" aria-label="Данные и настройки" onClick={() => setSettings(true)}><Settings2 size={21} /></button></div>
-        <div className="page-heading"><h1>Упражнения<span className="heading-dot">.</span></h1></div>
-        <div className="hero-card"><div><h2>ДИСЦИПЛИНА</h2><p>это решение делать то, чего очень не хочется делать, чтобы достичь того, чего очень хочется достичь.</p></div><div className="hero-icon"><Activity size={36} /></div></div>
-        <button className="install-link" onClick={() => setInstallOpen(true)}><Download size={17} /> На главный экран — как приложение <ArrowRight size={17} /></button><div className="section-title"><h2>Каталог</h2><span>{filtered.length} найдено</span></div>
-        <div className="search-field"><Search size={19} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти упражнение" aria-label="Поиск упражнений" />{query && <button aria-label="Очистить поиск" onClick={() => setQuery('')}><X size={18} /></button>}</div>
-        <div className="chips" aria-label="Группы мышц">{groups.map((item) => <button key={item} className={group === item ? 'selected' : ''} onClick={() => setGroup(item)}>{item}</button>)}</div>
-        <div className="filter-row"><div className="kind-switch"><button className={kind === 'Все' ? 'selected' : ''} onClick={() => setKind('Все')}>Все</button><button className={kind === 'База' ? 'selected' : ''} onClick={() => setKind('База')}>База</button><button className={kind === 'Доп' ? 'selected' : ''} onClick={() => setKind('Доп')}>Доп</button></div><label className="sort-select"><ListFilter size={17} /><select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Сортировка"><option value="default">По списку</option><option value="name">По названию</option><option value="weight-desc">Вес ↓</option><option value="weight-asc">Вес ↑</option></select><ChevronDown size={15} /></label></div>
-        <div className="exercise-list">{filtered.length ? sections.map((section) => { const items = filtered.filter((exercise) => sectionOf(exercise.group) === section); return items.length ? <section className="muscle-section" key={section}><h3 className="muscle-heading">{section}<span>{items.length}</span></h3>{items.map((exercise) => <button className="exercise-card" key={exercise.id} onClick={() => openExercise(exercise)}><span className="exercise-symbol"><Dumbbell size={21} /></span><span className="exercise-info"><span className="exercise-meta">{exercise.group}{exercise.kind ? ` · ${exercise.kind}` : ''}{exercise.filmed ? ' · снято' : ''}</span><strong>{exercise.name}</strong>{(exercise.note || !exercise.weight || !exercise.reps || exercise.reps.includes('?')) && <span className="needs-review">{exercise.note || 'Уточнить рабочий подход'}</span>}</span><span className="exercise-result"><b>{approach(exercise.weight, exercise.reps)}</b><small>{exercise.weight || exercise.reps ? numericWeight(exercise.weight) ? 'кг × повт.' : 'нагрузка × повт.' : 'добавить'}</small></span><ArrowRight className="card-arrow" size={18} /></button>)}</section> : null }) : <div className="empty-state"><Search size={25} /><h3>Ничего не найдено</h3><p>Попробуйте другой запрос или фильтр.</p><Button variant="outline" onClick={() => { setQuery(''); setGroup('Все'); setKind('Все') }}>Сбросить фильтры</Button></div>}</div>
-      </section> : tab === 'plans' ? <section>
-        <div className="page-top"><span className="eyebrow">ПЛАНИРОВАНИЕ</span><button className="icon-button" aria-label="Данные и настройки" onClick={() => setSettings(true)}><Settings2 size={21} /></button></div>
-        {selectedPlan ? <>
-          <button className="text-back" onClick={() => setCurrentPlan(null)}><ArrowLeft size={17} /> {client ? 'Программы клиента' : 'Все шаблоны'}</button>
-          <div className="page-heading plan-heading"><h1>{selectedPlan.name}</h1><p>{exerciseCount(selectedPlan.exerciseIds.length)} в тренировке</p></div>
-          <div className="plan-actions"><Button className="primary-button" disabled={!selectedPlan.exerciseIds.length} onClick={() => startPlan(selectedPlan)}><Play size={17} fill="currentColor" /> Начать тренировку</Button><Button variant="outline" onClick={() => { setReplacingId(null); setPickerQuery(''); setPicker(true) }}><Plus size={17} /> Упражнение</Button></div>
-          <div className="section-title"><h2>Порядок упражнений</h2></div>
-          {selectedPlan.exerciseIds.length ? <PlanExerciseList entries={selectedPlan.exerciseIds.flatMap((id) => { const exercise = exercises.find((item) => item.id === id); return exercise ? [{ id, name: exercise.name, summary: client ? approach(client.results.find((result) => result.exerciseId === id)?.weight ?? '', client.results.find((result) => result.exerciseId === id)?.reps ?? '') : approach(exercise.weight, exercise.reps) }] : [] })} onMove={(from, to) => moveInPlan(selectedPlan.id, from, to - from)} onReplace={(id) => { setReplacingId(id); setPickerQuery(''); setPicker(true) }} onRemove={(id) => updatePlan(selectedPlan.id, (plan) => ({ ...plan, exerciseIds: plan.exerciseIds.filter((item) => item !== id) }))} /> : <div className="empty-state"><Dumbbell size={29} /><h3>Пока нет упражнений</h3><p>Добавьте упражнения, чтобы собрать тренировку.</p><Button onClick={() => { setReplacingId(null); setPicker(true) }}>Выбрать упражнения</Button></div>}
-          <button className="delete-plan" onClick={() => { if (window.confirm(`Удалить шаблон «${selectedPlan.name}»?`)) { updateData((current) => ({ ...current, plans: current.plans.filter((plan) => plan.id !== selectedPlan.id) })); setCurrentPlan(null) } }}><Trash2 size={16} /> Удалить шаблон</button>
-        </> : <>
-          <div className="page-heading"><h1>{client ? 'Программы' : 'Шаблоны'}<span className="heading-dot">.</span></h1><p>Планируйте тренировки в своём темпе</p></div>
-          <div className="section-title"><h2>Ваши тренировки</h2><Button className="small-add" onClick={() => setPlanDialog(true)}><Plus size={17} /> Создать</Button></div>
-          {plans.length ? <div className="plans-grid">{plans.map((plan, index) => <article className="template-card" key={plan.id}><div className="template-top"><span className="template-number">ПЛАН {String(index + 1).padStart(2, '0')}</span><Dumbbell size={20} /></div><div className="template-icon"><Dumbbell size={24} /></div><h3>{plan.name}</h3><p>{exerciseCount(plan.exerciseIds.length)}</p><div className="template-actions"><button onClick={() => setCurrentPlan(plan.id)}>Открыть <ArrowRight size={17} /></button><button disabled={!plan.exerciseIds.length} aria-label={`Начать тренировку ${plan.name}`} onClick={() => startPlan(plan)}><Play size={17} /></button></div></article>)}</div> : <div className="empty-state large"><Dumbbell size={31} /><h3>Создайте первый шаблон</h3><p>Соберите упражнения в удобном порядке, чтобы быстро начать тренировку.</p><Button onClick={() => setPlanDialog(true)}><Plus size={17} /> Создать шаблон</Button></div>}
-        </>}
-      </section> : tab === 'clients' ? <section>
-        <div className="page-top"><span className="eyebrow">РАБОТА С КЛИЕНТАМИ</span><button className="icon-button" aria-label="Данные и настройки" onClick={() => setSettings(true)}><Settings2 size={21} /></button></div>
-        {client ? <>
-          <button className="text-back" onClick={() => setClientId(null)}><ArrowLeft size={17} /> Все клиенты</button>
-          <div className="page-heading"><h1>{client.name}</h1>{client.contact && <p>{client.contact}</p>}</div>
-          {client.note && <p className="client-note">{client.note}</p>}
-          <div className="plan-actions"><Button variant="outline" onClick={() => setClientForm({ ...client })}><Pencil size={17} /> Редактировать</Button><Button variant="outline" onClick={() => setTab('journal')}><History size={17} /> Журнал клиента</Button></div>
-          <div className="section-title"><h2>Программы тренировок</h2><Button onClick={() => setPlanDialog(true)}><Plus size={17} /> Создать</Button></div>
-          {plans.length ? <div className="plans-grid">{plans.map((plan) => <article className="template-card" key={plan.id}><span className="template-number">ПРОГРАММА</span><h3>{plan.name}</h3><p>{exerciseCount(plan.exerciseIds.length)}</p><div className="template-actions"><button onClick={() => { setCurrentPlan(plan.id); setTab('plans') }}>Открыть <ArrowRight size={17} /></button><button aria-label={'Начать тренировку ' + plan.name} disabled={!plan.exerciseIds.length} onClick={() => startPlan(plan)}><Play size={17} /></button></div></article>)}</div> : <div className="empty-state"><Dumbbell size={29} /><h3>Создайте программу для клиента</h3><p>Добавьте упражнения из общего каталога. Результаты и пометки сохраняются отдельно для каждого клиента.</p></div>}
-          <button className="delete-plan" onClick={() => { if (window.confirm('Удалить клиента «' + client.name + '», его программы и журнал?')) { updateData((current) => ({ ...current, clients: current.clients.filter((item) => item.id !== client.id), plans: current.plans.filter((item) => item.clientId !== client.id), sessions: current.sessions.filter((item) => item.clientId !== client.id), draft: current.draft?.clientId === client.id ? null : current.draft })); setClientId(null); setCurrentPlan(null) } }}><Trash2 size={16} /> Удалить клиента</button>
-        </> : <>
-          <div className="page-heading"><h1>Клиенты<span className="heading-dot">.</span></h1><p>Программы и прогресс каждого клиента</p></div>
-          <div className="section-title"><h2>Карточки клиентов</h2><Button onClick={() => setClientForm({ id: newId(), name: '', contact: '', note: '', results: [], techniques: {} })}><Plus size={17} /> Добавить</Button></div>
-          {data.clients.length ? <div className="plans-grid">{data.clients.map((item) => <button className="client-card" key={item.id} onClick={() => setClientId(item.id)}><Users size={24} /><strong>{item.name}</strong><span>{item.contact || 'Открыть карточку'}</span><ArrowRight size={18} /></button>)}</div> : <div className="empty-state large"><Users size={31} /><h3>Добавьте первого клиента</h3><p>Создайте карточку и соберите персональную программу тренировок.</p></div>}
-        </>}
-      </section> : <section>
-        <div className="page-top"><span className="eyebrow">ИСТОРИЯ ЗАНЯТИЙ</span><button className="icon-button" aria-label="Данные и настройки" onClick={() => setSettings(true)}><Settings2 size={21} /></button></div>
-        <div className="page-heading"><h1>Журнал<span className="heading-dot">.</span></h1><p>Ваш путь, тренировка за тренировкой</p></div>
-        <div className="journal-summary"><div className="summary-icon"><Activity size={25} /></div><div><strong>{sessions.length}</strong><span>Всего завершено</span></div></div>
-        <div className="section-title"><h2>Последние занятия</h2></div>
-        {sessions.length ? <div className="journal-list">{sessions.map((session) => <details className="session-card" key={session.id}><summary><span className="session-date">{dateLabel(session.date)}</span><strong>{session.planName}</strong><small>{exerciseCount(session.results.length)}</small><ChevronDown size={20} /></summary><div className="session-results">{session.results.map((result, index) => <div key={`${result.exerciseId}-${index}`}><span>{result.name}</span><b>{approach(result.weight, result.reps)}</b></div>)}</div></details>)}</div> : <div className="empty-state large"><History size={31} /><h3>Журнал пока пуст</h3><p>Завершите тренировку по шаблону, и она появится здесь.</p><Button onClick={() => { setCurrentPlan(null); setTab('plans') }}>{client ? 'К программам' : 'К шаблонам'} <ArrowRight size={17} /></Button></div>}
-      </section>}
-    </main>
-    {(!draft || !showDraft) && <nav className="bottom-nav" aria-label="Основная навигация"><button className={tab === 'catalog' ? 'active' : ''} onClick={() => { setClientId(null); setCurrentPlan(null); setTab('catalog') }}><BookOpen size={21} /><span>Упражнения</span></button><button className={tab === 'plans' ? 'active' : ''} onClick={() => { setClientId(null); setCurrentPlan(null); setTab('plans') }}><Dumbbell size={21} /><span>Шаблоны</span></button><button className={tab === 'journal' ? 'active' : ''} onClick={() => { setClientId(null); setCurrentPlan(null); setTab('journal') }}><History size={21} /><span>Журнал</span></button><button className={tab === 'clients' ? 'active' : ''} onClick={() => { setCurrentPlan(null); setTab('clients') }}><Users size={21} /><span>Клиенты</span></button></nav>}
-    <Sheet open={!!editing} onOpenChange={(open) => { if (!open) { setEditing(null); setEditForm(null) } }}><SheetContent side="bottom" className="edit-sheet"><SheetHeader><SheetTitle>Упражнение</SheetTitle><SheetDescription>Измените рабочий подход и фотографии</SheetDescription></SheetHeader>{editForm && <div className="edit-scroll"><div className="field"><label htmlFor="exercise-name">Название</label><Input id="exercise-name" value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} /></div><div className="two-fields"><div className="field"><label htmlFor="exercise-group">Группа</label><select id="exercise-group" value={editForm.group} onChange={(event) => setEditForm({ ...editForm, group: event.target.value })}>{groups.slice(1).map((item) => <option key={item}>{item}</option>)}</select></div><div className="field"><label htmlFor="exercise-kind">Тип</label><select id="exercise-kind" value={editForm.kind} onChange={(event) => setEditForm({ ...editForm, kind: event.target.value as Exercise['kind'] })}><option value="">Без типа</option><option>База</option><option>Доп</option></select></div></div><div className="two-fields"><div className="field"><label htmlFor="exercise-weight">Рабочий вес / нагрузка</label><Input id="exercise-weight" inputMode="decimal" value={editForm.weight} onChange={(event) => setEditForm({ ...editForm, weight: event.target.value })} placeholder="Например, 50" /></div><div className="field"><label htmlFor="exercise-reps">Повторы</label><Input id="exercise-reps" inputMode="text" value={editForm.reps} onChange={(event) => setEditForm({ ...editForm, reps: event.target.value })} placeholder="Например, 4" /></div></div><div className="field"><label htmlFor="exercise-note">Заметка</label><Textarea id="exercise-note" value={editForm.note} onChange={(event) => setEditForm({ ...editForm, note: event.target.value })} placeholder="Техника, ощущения, уточнения…" /></div><div className="field"><span className="field-title">Скриншоты</span><div className="image-grid">{([0, 1] as const).map((position) => <div className="image-slot" key={position}>{editForm.images[position] ? <><button className="image-view" aria-label={`Увеличить скриншот ${position + 1}`} onClick={() => setImagePreview({ images: photos(editForm), name: editForm.name, index: photos(editForm).indexOf(editForm.images[position]!) })}><img src={editForm.images[position]!} alt={`Скриншот ${position + 1}: ${editForm.name}`} /></button><label className="image-replace" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector('input')?.click() } }}><Pencil size={15} /> Заменить<input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadImage(file, position); event.target.value = '' }} /></label><button className="image-remove" aria-label={`Удалить скриншот ${position + 1}`} onClick={() => setEditForm({ ...editForm, images: editForm.images.map((image, index) => index === position ? null : image) as Exercise['images'] })}><X size={16} /></button></> : <label className="image-add" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector('input')?.click() } }}><ImagePlus size={25} /><span>Скриншот {position + 1}</span><small>Добавить фото</small><input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadImage(file, position); event.target.value = '' }} /></label>}</div>)}</div></div>{editForm.history.length > 0 && <div className="field"><span className="field-title">Последние результаты</span><div className="history-list">{editForm.history.slice(0, 3).map((entry, index) => <div key={index}><span>{entry.date ? dateLabel(entry.date) : 'Исходное значение'}</span><strong>{approach(entry.weight, entry.reps)}</strong></div>)}</div></div>}</div>}<div className="sheet-footer"><Button className="primary-button" onClick={saveExercise} disabled={!editForm?.name.trim()}><Check size={17} /> Сохранить изменения</Button></div></SheetContent></Sheet>
-    <Dialog open={planDialog} onOpenChange={setPlanDialog}><DialogContent className="app-dialog"><DialogHeader><DialogTitle>{client ? 'Новая программа клиента' : 'Новый шаблон'}</DialogTitle><DialogDescription>Дайте тренировке короткое название</DialogDescription></DialogHeader><Input autoFocus value={planName} onChange={(event) => setPlanName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') createPlan() }} placeholder="Например, День ног" aria-label="Название шаблона" /><Button className="primary-button" onClick={createPlan} disabled={!planName.trim()}>{client ? 'Создать программу' : 'Создать шаблон'}</Button></DialogContent></Dialog>
-    <Dialog open={picker} onOpenChange={(open) => { setPicker(open); if (!open) setReplacingId(null) }}><DialogContent className="picker-dialog"><DialogHeader><DialogTitle>{replacingId ? 'Заменить упражнение' : 'Добавить упражнение'}</DialogTitle><DialogDescription>{replacingId ? 'Вместо «' + exercises.find((item) => item.id === replacingId)?.name + '». Позиция в программе сохранится.' : 'Выберите из каталога'}</DialogDescription></DialogHeader><div className="search-field"><Search size={18} /><Input value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} placeholder="Поиск по названию" aria-label="Поиск для шаблона" /></div><div className="picker-list">{sections.map((section) => { const items = exercises.filter((exercise) => sectionOf(exercise.group) === section && !selectedPlan?.exerciseIds.includes(exercise.id) && `${exercise.name} ${exercise.group} ${section}`.toLocaleLowerCase('ru').includes(pickerQuery.toLocaleLowerCase('ru'))); return items.length ? <section key={section}><h3 className="muscle-heading">{section}</h3>{items.map((exercise) => <button key={exercise.id} onClick={() => { if (selectedPlan) updatePlan(selectedPlan.id, (plan) => ({ ...plan, exerciseIds: replacingId ? plan.exerciseIds.map((id) => id === replacingId ? exercise.id : id) : [...plan.exerciseIds, exercise.id] })); setPicker(false) }}><span><small>{exercise.group}{exercise.kind ? ` · ${exercise.kind}` : ''}</small><strong>{exercise.name}</strong></span><Plus size={18} /></button>)}</section> : null })}</div></DialogContent></Dialog>
-    <Dialog open={!!imagePreview} onOpenChange={(open) => { if (!open) setImagePreview(null) }}><DialogContent className="preview-dialog"><DialogHeader><DialogTitle>{imagePreview?.name}</DialogTitle><DialogDescription>Листайте скриншоты свайпом</DialogDescription></DialogHeader>{imagePreview && <Gallery key={imagePreview.name + imagePreview.index} images={imagePreview.images} name={imagePreview.name} initial={imagePreview.index} />}</DialogContent></Dialog>
-    <Dialog open={!!clientForm} onOpenChange={(open) => { if (!open) setClientForm(null) }}><DialogContent className="app-dialog"><DialogHeader><DialogTitle>Карточка клиента</DialogTitle><DialogDescription>Имя, контакт и заметки для тренера</DialogDescription></DialogHeader>{clientForm && <>
-      <div className="field"><label htmlFor="client-name">Имя клиента</label><Input id="client-name" autoFocus value={clientForm.name} onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })} /></div>
-      <div className="field"><label htmlFor="client-contact">Телефон или другой контакт</label><Input id="client-contact" value={clientForm.contact} onChange={(event) => setClientForm({ ...clientForm, contact: event.target.value })} /></div>
-      <div className="field"><label htmlFor="client-note">Заметки о клиенте</label><Textarea id="client-note" value={clientForm.note} onChange={(event) => setClientForm({ ...clientForm, note: event.target.value })} /></div>
-      <Button className="primary-button" disabled={!clientForm.name.trim()} onClick={saveClient}>Сохранить карточку</Button></>}</DialogContent></Dialog>
-    <Dialog open={settings} onOpenChange={setSettings}><DialogContent className="app-dialog"><DialogHeader><DialogTitle>Данные и настройки</DialogTitle><DialogDescription>Резервная копия хранит упражнения, фото, клиентов, программы, пометки и журнал.</DialogDescription></DialogHeader><div className="settings-actions"><Button variant="outline" onClick={() => { setSettings(false); setInstallOpen(true) }}><Download size={18} /> Установить как приложение</Button><Button variant="outline" onClick={exportBackup}><Download size={18} /> Скачать резервную копию</Button><Button variant="outline" onClick={() => importRef.current?.click()}><Upload size={18} /> Восстановить из файла</Button><input ref={importRef} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) importBackup(file) }} /></div><p className="settings-note">Данные доступны только в этом браузере. Скачайте копию перед очисткой данных браузера или переносом на другое устройство.</p></DialogContent></Dialog>
-    <InstallApp open={installOpen} onOpenChange={setInstallOpen} />
-    {notice && <div className="toast" role="status">{notice}</div>}
-  </div>
+  function toggleFlag(personId: string, id: string) {
+    mutate((next) => {
+      const p = next.people.find((p) => p.id === personId)!;
+      p.flags = p.flags.includes(id)
+        ? p.flags.filter((x) => x !== id)
+        : [...p.flags, id];
+    });
+  }
+  function finishParticipant(personId: string, absent = false) {
+    mutate((next) => finish(next, current!.id, personId, absent));
+    go({ page: "summary", appointment: current!.id });
+  }
+  function rowResult(p: Participant, index: number) {
+    const e = p.entries[index];
+    if (!e) return null;
+    const who = personById(p.personId);
+    return (
+      <div
+        className={"result-form " + (e.done ? "confirmed" : "")}
+        key={p.personId}
+      >
+        <div className="row between">
+          <strong>
+            {current!.participants.length > 1 ? who.name : "Рабочий подход"}
+          </strong>
+          <button
+            className={
+              "icon flag " + (who.flags.includes(e.id) ? "flagged" : "")
+            }
+            aria-label={"Техника под вопросом: " + who.name}
+            aria-pressed={who.flags.includes(e.id)}
+            onClick={() => toggleFlag(who.id, e.id)}
+          >
+            <CircleHelp size={17} />
+          </button>
+        </div>
+        <p className="previous">
+          {e.previous ? (
+            <>
+              В прошлый раз <b>{e.previous}</b>
+              <span>
+                {" "}
+                ·{" "}
+                {e.previousDate
+                  ? labelDate(e.previousDate, {
+                      day: "numeric",
+                      month: "short",
+                    })
+                  : "исходное значение"}
+              </span>
+            </>
+          ) : (
+            "Первый результат — заполните поля"
+          )}
+        </p>
+        {p.status === "done" || p.status === "absent" ? (
+          <div className="status-line">
+            <CheckCircle2 size={17} />
+            {p.status === "absent" ? "Неявка" : e.done ? format(e.weight,e.reps) + " · Подтверждено" : "Пропущено"}
+          </div>
+        ) : (
+          <>
+            <div className="inputs">
+              <label>
+                Вес / нагрузка
+                <input
+                  aria-label={"Вес: " + who.name}
+                  value={e.weight}
+                  onChange={(event) =>
+                    changeAppointment((a) => {
+                      const r = a.participants.find(
+                        (x) => x.personId === p.personId,
+                      )!.entries[index];
+                      r.weight = event.target.value;
+                      r.done = false;
+                    })
+                  }
+                  placeholder="0"
+                />
+              </label>
+              <span>×</span>
+              <label>
+                Повторы
+                <input
+                  aria-label={"Повторы: " + who.name}
+                  inputMode="numeric"
+                  value={e.reps}
+                  onChange={(event) =>
+                    changeAppointment((a) => {
+                      const r = a.participants.find(
+                        (x) => x.personId === p.personId,
+                      )!.entries[index];
+                      r.reps = event.target.value;
+                      r.done = false;
+                    })
+                  }
+                  placeholder="0"
+                />
+              </label>
+            </div>
+            <button
+              className={"btn full " + (e.done ? "soft" : "primary")}
+              disabled={!e.weight.trim() || !e.reps.trim()}
+              onClick={() =>
+                changeAppointment((a) => {
+                  const participant = a.participants.find(
+                    (x) => x.personId === p.personId,
+                  )!;
+                  participant.entries[index].done = true;
+                  const nextIndex = participant.entries.findIndex(
+                    (x, i) => i > index && !x.done,
+                  );
+                  participant.opened =
+                    nextIndex < 0
+                      ? participant.entries.findIndex((x) => !x.done)
+                      : nextIndex;
+                  if (
+                    a.mode === "shared" &&
+                    a.participants
+                      .filter((x) => x.status === "active")
+                      .every((x) => x.entries[index]?.done)
+                  )
+                    a.sharedOpened = a.participants[0].entries.findIndex(
+                      (_, i) =>
+                        a.participants.some(
+                          (p) => p.status === "active" && !p.entries[i]?.done,
+                        ),
+                    );
+                })
+              }
+            >
+              <Check size={18} />
+              {e.done ? "Результат подтверждён" : "Готово"}
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+  function openPicker(replace?: string, workout?: number) {
+    setModal({
+      type: "picker",
+      selected: [],
+      query: "",
+      group: "Все",
+      replace,
+      workout,
+    });
+  }
+  function savePicker() {
+    if (modal.workout !== undefined) {
+      changeAppointment((a) => {
+        const ps =
+          a.mode === "shared" ? a.participants : [a.participants[a.selected]];
+        ps.forEach((p) => {
+          p.entries[modal.workout] = entry(
+            store,
+            p.personId,
+            modal.selected[0],
+          );
+        });
+      });
+    } else
+      editProgram((p) => {
+        const d = p.days.find((d) => d.id === route.day)!;
+        d.exercises = modal.replace
+          ? d.exercises.map((id) =>
+              id === modal.replace ? modal.selected[0] : id,
+            )
+          : [...d.exercises, ...modal.selected];
+      });
+    setModal(null);
+    flash(modal.replace ? "Упражнение заменено" : "Упражнения добавлены");
+  }
+  const head = (
+    title: string,
+    subtitle?: string,
+    back?: Route,
+    action?: any,
+  ) => (
+    <>
+      <header className="topbar">
+        {back ? (
+          <button className="icon" aria-label="Назад" onClick={() => go(back)}>
+            <ArrowLeft size={21} />
+          </button>
+        ) : (
+          <span className="brand">
+            МОЙ ТЕМП
+            <span className="brand-dot" />
+          </span>
+        )}
+        <span className="save-state" role="status">
+          {saveError ? "Не сохранено" : saving ? "Сохраняем…" : "На телефоне"}
+        </span>
+        {action ?? <span className="spacer" />}
+      </header>
+      <div className="page-title">
+        <h1>{title}</h1>
+        {subtitle && <p>{subtitle}</p>}
+      </div>
+    </>
+  );
+  function appointmentCard(a: Appointment) {
+    const active = a.status === "active";
+    return (
+      <article
+        className={"appointment " + (active ? "active-appointment" : "")}
+        key={a.id}
+      >
+        <div className="row between">
+          <span className="time">
+            <Clock3 size={15} />
+            {a.time || "Без времени"}
+            {a.duration !== null && <small>{a.duration} мин</small>}
+          </span>
+          <span className={"badge " + (active ? "warm" : "")}>
+            {active
+              ? "В процессе"
+              : a.status === "cancelled"
+                ? "Отменено"
+                : a.status === "done"
+                  ? "Завершено"
+                  : a.participants.length === 2
+                    ? "Парная"
+                    : "Личная"}
+          </span>
+          <button
+            className="icon"
+            aria-label="Действия с занятием"
+            onClick={() => setModal({ type: "appointment-menu", id: a.id })}
+          >
+            <MoreHorizontal size={20} />
+          </button>
+        </div>
+        <div className="row person-line">
+          <div className="avatar-stack">
+            {a.participants.map((p) => (
+              <Avatar key={p.personId} person={personById(p.personId)} small />
+            ))}
+          </div>
+          <div>
+            <h3>
+              {a.participants
+                .map((p) => personById(p.personId).name.split(" ")[0])
+                .join(" + ")}
+            </h3>
+            <p>
+              {a.participants.length > 1
+                ? a.mode === "shared"
+                  ? "Общие упражнения · свои результаты"
+                  : a.participants
+                      .map(
+                        (p) =>
+                          personById(p.personId).name.split(" ")[0] +
+                          ": " +
+                          p.dayName,
+                      )
+                      .join(" · ")
+                : a.participants[0].dayName}
+            </p>
+          </div>
+        </div>
+        {a.status !== "cancelled" && (
+          <button
+            className={"btn full " + (active ? "primary" : "soft")}
+            onClick={() =>
+              a.status === "done"
+                ? go({ page: "summary", appointment: a.id })
+                : start(a.id)
+            }
+          >
+            {a.status === "done" ? <Check size={17} /> : <Play size={16} />}
+            {active
+              ? "Продолжить"
+              : a.status === "done"
+                ? "Итоги занятия"
+                : "Начать тренировку"}
+            <ArrowRight size={17} />
+          </button>
+        )}
+      </article>
+    );
+  }
+  const filteredExercises = store.exercises.filter(
+    (e) =>
+      (group === "Все" || section(e.group) === group) &&
+      e.name.toLowerCase().includes(search.toLowerCase()),
+  );
+  return (
+    <div className="device">
+      {saveError && (
+        <div className="save-error" role="alert">
+          {saveError}
+          <button
+            className="btn soft"
+            onClick={() => download(store, "moy-temp-rescue.json")}
+          >
+            Скачать копию
+          </button>
+          <button
+            className="btn soft"
+            onClick={() => setStore(structuredClone(store))}
+          >
+            Повторить сохранение
+          </button>
+        </div>
+      )}
+      <main>
+        {route.page === "today" && (
+          <>
+            {head(
+              date === today ? "Сегодня" : labelDate(date),
+              labelDate(date, {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              }),
+              undefined,
+              <button
+                className="icon"
+                aria-label="Запланировать занятие"
+                onClick={() => newSchedule()}
+              >
+                <Plus size={23} />
+              </button>,
+            )}
+            <div className="week">
+              {[-3, -2, -1, 0, 1, 2, 3].map((n) => {
+                const d = dayOffset(date, n);
+                return (
+                  <button
+                    key={d}
+                    className={d === date ? "selected" : ""}
+                    onClick={() => setDate(d)}
+                  >
+                    <small>{labelDate(d, { weekday: "short" })}</small>
+                    <b>{new Date(d + "T12:00:00").getDate()}</b>
+                    <span
+                      className={
+                        store.appointments.some((a) => a.date === d)
+                          ? "has-event"
+                          : ""
+                      }
+                    />
+                  </button>
+                );
+              })}
+            </div>
+            <div className="date-row">
+              <label>
+                <CalendarDays size={16} />
+                <input
+                  aria-label="Дата расписания"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value || today)}
+                />
+              </label>
+              <button className="text" onClick={() => setDate(today)}>
+                Сегодня
+              </button>
+            </div>
+            <button className="quick-start" onClick={() => newSchedule(true)}>
+              <span className="quick-icon">
+                <Play size={18} />
+              </span>
+              <span>
+                <strong>Тренировка сейчас</strong>
+                <small>Без записи в расписании</small>
+              </span>
+              <ChevronRight size={18} />
+            </button>
+            {store.appointments.some((a) => a.status === "active") && (
+              <>
+                <div className="section-title">
+                  <h2>Продолжить</h2>
+                  <span className="live-dot" />
+                </div>
+                {store.appointments
+                  .filter((a) => a.status === "active")
+                  .map(appointmentCard)}
+              </>
+            )}
+            <div className="section-title">
+              <h2>Расписание</h2>
+              <span>
+                {
+                  store.appointments.filter(
+                    (a) => a.date === date && a.status !== "active",
+                  ).length
+                }{" "}
+                занятия
+              </span>
+            </div>
+            {store.appointments
+              .filter((a) => a.date === date && a.status !== "active")
+              .sort((a, b) => a.time.localeCompare(b.time))
+              .map(appointmentCard)}
+            {!store.appointments.some((a) => a.date === date) && (
+              <div className="empty">
+                <CalendarPlus size={28} />
+                <h3>День пока свободен</h3>
+                <p>Запланируйте занятие или начните тренировку сейчас.</p>
+                <button className="btn soft" onClick={() => newSchedule()}>
+                  Добавить занятие
+                </button>
+              </div>
+            )}
+          </>
+        )}
+        {route.page === "people" && (
+          <>
+            {head(
+              "Люди",
+              "Клиенты и мои тренировки",
+              undefined,
+              <button
+                className="icon"
+                aria-label="Добавить человека"
+                onClick={() =>
+                  setModal({ type: "person-edit", name: "", note: "" })
+                }
+              >
+                <Plus size={23} />
+              </button>,
+            )}
+            <div className="search">
+              <Search size={18} />
+              <input
+                placeholder="Найти человека"
+                aria-label="Поиск людей"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="people-list">
+              {store.people
+                .filter((p) =>
+                  p.name.toLowerCase().includes(search.toLowerCase()),
+                )
+                .map((p) => (
+                  <button
+                    className="person-card"
+                    key={p.id}
+                    onClick={() => {
+                      setPersonTab("Обзор");
+                      go({ page: "person", person: p.id });
+                    }}
+                  >
+                    <Avatar person={p} />
+                    <span>
+                      <strong>{p.name}</strong>
+                      <small>
+                        {p.programs.find((p) => p.active)?.name ??
+                          "Добавьте программу"}
+                      </small>
+                    </span>
+                    <ChevronRight size={19} />
+                  </button>
+                ))}
+            </div>
+          </>
+        )}
+        {route.page === "person" && person && (
+          <>
+            {head(
+              person.name,
+              person.id === "self" ? "Мои тренировки" : "Карточка клиента",
+              { page: "people" },
+              <button
+                className="icon"
+                aria-label="Настройки человека"
+                onClick={() =>
+                  setModal({
+                    type: "person-edit",
+                    id: person.id,
+                    name: person.name,
+                    note: person.note,
+                    contact: person.contact,
+                  })
+                }
+              >
+                <MoreHorizontal size={22} />
+              </button>,
+            )}
+            <div className="tabs">
+              {["Обзор", "Программы", "История"].map((tab) => (
+                <button
+                  key={tab}
+                  className={personTab === tab ? "selected" : ""}
+                  onClick={() => setPersonTab(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            {personTab === "Обзор" && (
+              <>
+                {person.programs.find((pg) => pg.active) ? (
+                  <button
+                    className="library-row"
+                    onClick={() =>
+                      go({
+                        page: "program",
+                        person: person.id,
+                        program: person.programs.find((pg) => pg.active)!.id,
+                      })
+                    }
+                  >
+                    <BookOpen size={20} />
+                    <span>
+                      <small>Активная программа</small>
+                      <strong>
+                        {person.programs.find((pg) => pg.active)!.name}
+                      </strong>
+                    </span>
+                    <ChevronRight size={18} />
+                  </button>
+                ) : (
+                  <button
+                    className="btn outline full"
+                    onClick={() => setModal({ type: "new-program", name: "" })}
+                  >
+                    Создать программу
+                  </button>
+                )}
+                <button
+                  className="btn primary full"
+                  onClick={() => newSchedule(true)}
+                >
+                  <Play size={17} />
+                  Начать тренировку
+                </button>
+                {store.appointments
+                  .filter(
+                    (a) =>
+                      a.date >= today &&
+                      a.status === "planned" &&
+                      a.participants.some((p) => p.personId === person.id),
+                  )
+                  .sort((a, b) =>
+                    (a.date + a.time).localeCompare(b.date + b.time),
+                  )
+                  .slice(0, 1)
+                  .map((a) => (
+                    <div className="next-session" key={a.id}>
+                      <CalendarDays size={19} />
+                      <span>
+                        <small>Ближайшее занятие</small>
+                        <strong>
+                          {labelDate(a.date)} · {a.time}
+                        </strong>
+                      </span>
+                      <button
+                        className="icon"
+                        aria-label="Изменить ближайшее занятие"
+                        onClick={() => newSchedule(false, a)}
+                      >
+                        <ChevronRight size={20} />
+                      </button>
+                    </div>
+                  ))}
+                <div className="month-switch">
+                  <button
+                    className="icon"
+                    aria-label="Предыдущий месяц"
+                    onClick={() =>
+                      setMonth(dayOffset(month + "-01", -1).slice(0, 7))
+                    }
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <strong>
+                    {labelDate(month + "-01", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </strong>
+                  <button
+                    className="icon"
+                    aria-label="Следующий месяц"
+                    onClick={() => {
+                      const d = new Date(month + "-01T12:00:00");
+                      d.setMonth(d.getMonth() + 1);
+                      setMonth(iso(d).slice(0, 7));
+                    }}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+                <section className="surface">
+                  <div className="section-title">
+                    <h2>Посещаемость</h2>
+                    <CalendarDays size={18} />
+                  </div>
+                  <div className="stats">
+                    {["Проведено", "Неявки", "Отмены"].map((label, i) => (
+                      <div key={label}>
+                        <b>
+                          {i === 0
+                            ? store.sessions.filter(
+                                (s) =>
+                                  s.personId === person.id &&
+                                  s.date.startsWith(month),
+                              ).length
+                            : store.appointments.filter(
+                                (a) =>
+                                  a.date.startsWith(month) &&
+                                  a.participants.some(
+                                    (p) =>
+                                      p.personId === person.id &&
+                                      (i === 1
+                                        ? p.status === "absent"
+                                        : a.status === "cancelled"),
+                                  ),
+                              ).length}
+                        </b>
+                        <small>{label}</small>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+                <section className="surface">
+                  <div className="section-title">
+                    <h2>Результаты</h2>
+                    <Dumbbell size={18} />
+                  </div>
+                  <p className="muted small-text">
+                    Последний и предыдущий подход
+                  </p>
+                  {!resultHistory(store, person.id).some((r) =>
+                    r.date.startsWith(month),
+                  ) && (
+                    <p className="muted">В этом месяце результатов пока нет.</p>
+                  )}
+                  {[
+                    ...new Set(
+                      resultHistory(store, person.id)
+                        .filter((r) => r.date.startsWith(month))
+                        .reverse()
+                        .map((r) => r.id),
+                    ),
+                  ].map((id) => {
+                    const hs = resultHistory(store, person.id, id).filter(
+                      (r) => !r.date || r.date <= month + "-31",
+                    );
+                    const last = hs.at(-1),
+                      prev = hs.at(-2);
+                    return (
+                      <button
+                        className="progress-row"
+                        key={id}
+                        onClick={() =>
+                          setModal({
+                            type: "history",
+                            person: person.id,
+                            exercise: id,
+                          })
+                        }
+                      >
+                        <span>{ex(id).name}</span>
+                        <span>
+                          <strong>
+                            {last
+                              ? format(last.weight, last.reps)
+                              : "Нет записей"}
+                          </strong>
+                          <small>
+                            {prev
+                              ? "ранее " + format(prev.weight, prev.reps)
+                              : "—"}
+                          </small>
+                        </span>
+                        <ChevronRight size={15} />
+                      </button>
+                    );
+                  })}
+                </section>
+              </>
+            )}
+            {personTab === "Программы" && (
+              <>
+                <div className="section-title">
+                  <h2>Программы</h2>
+                  <button
+                    className="icon"
+                    aria-label="Создать программу"
+                    onClick={() => setModal({ type: "new-program", name: "" })}
+                  >
+                    <Plus size={22} />
+                  </button>
+                </div>
+                {person.programs.map((pg) => (
+                  <button
+                    className="program-card"
+                    key={pg.id}
+                    onClick={() =>
+                      go({ page: "program", person: person.id, program: pg.id })
+                    }
+                  >
+                    <span className={"badge " + (pg.active ? "warm" : "")}>
+                      {pg.active ? "Активная" : "В архиве"}
+                    </span>
+                    <h2>{pg.name}</h2>
+                    <p>
+                      {quantity(pg.days.length,["день","дня","дней"])} · Далее{" "}
+                      {pg.days[pg.next % pg.days.length]?.name ??
+                        "добавьте день"}
+                    </p>
+                    <span className="row between">
+                      <small>Открыть программу</small>
+                      <ArrowRight size={18} />
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
+            {personTab === "История" && (
+              <>
+                <div className="section-title">
+                  <h2>Занятия</h2>
+                </div>
+                {store.sessions
+                  .filter((s) => s.personId === person.id)
+                  .slice()
+                  .reverse()
+                  .map((s) => (
+                    <details className="history-card" key={s.id}>
+                      <summary>
+                        <span>
+                          <small>{labelDate(s.date)}</small>
+                          <strong>{s.dayName}</strong>
+                        </span>
+                        <span className="badge">
+                          {s.results.filter((r) => r.done).length} упр.
+                        </span>
+                      </summary>
+                      {s.results.map((r, i) => (
+                        <div className="history-result" key={i}>
+                          <span>{r.name}</span>
+                          <b>
+                            {r.done ? format(r.weight, r.reps) : "Пропущено"}
+                          </b>
+                        </div>
+                      ))}
+                    </details>
+                  ))}
+              </>
+            )}
+          </>
+        )}
+        {route.page === "program" && program && person && (
+          <>
+            {head(
+              program.name,
+              program.active ? "Активная программа" : "Архивная программа",
+              { page: "person", person: person.id },
+              <button
+                className="icon"
+                aria-label="Действия с программой"
+                onClick={() => setModal({ type: "program-menu" })}
+              >
+                <MoreHorizontal size={22} />
+              </button>,
+            )}
+            <div className="context-person">
+              <Avatar person={person} small />
+              <strong>{person.name}</strong>
+            </div>
+            <div className="section-title">
+              <h2>Дни программы</h2>
+              <span>{program.days.length}</span>
+            </div>
+            {program.days.map((d, i) => (
+              <button
+                className="day-card"
+                key={d.id}
+                onClick={() => go({ ...route, page: "day", day: d.id })}
+              >
+                <span className="day-letter">
+                  {String.fromCharCode(65 + i)}
+                </span>
+                <span>
+                  <strong>{d.name}</strong>
+                  <small>
+                    {quantity(d.exercises.length)}
+                    {program.next === i ? " · Следующая тренировка" : ""}
+                  </small>
+                </span>
+                <ChevronRight size={18} />
+              </button>
+            ))}
+            <button
+              className="btn outline full"
+              onClick={() => setModal({ type: "new-day", name: "" })}
+            >
+              <Plus size={18} />
+              Добавить день
+            </button>
+            <div className="hint">
+              <BookOpen size={19} />
+              <p>Дни идут по порядку. На занятии можно выбрать другой день.</p>
+            </div>
+          </>
+        )}
+        {route.page === "day" && day && person && (
+          <>
+            {head(
+              day.name,
+              `${person.name} · ${program!.name}`,
+              { page: "program", person: person.id, program: program!.id },
+              <button
+                className="icon"
+                aria-label="Действия с днём"
+                onClick={() => setModal({ type: "day-menu" })}
+              >
+                <MoreHorizontal size={22} />
+              </button>,
+            )}
+            <p className="muted small-text">
+              {quantity(day.exercises.length)} · Потяните за ручку, чтобы
+              изменить порядок
+            </p>
+            <div className="edit-list">
+              {day.exercises.map((id, index) => (
+                <article className="edit-row" data-index={index} key={id}>
+                  <button
+                    className="drag-handle icon"
+                    aria-label={"Переместить " + ex(id).name}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      drag.current = { from: index, to: index };
+                    }}
+                    onPointerMove={(e) => {
+                      if (!drag.current) return;
+                      const target = document
+                        .elementFromPoint(e.clientX, e.clientY)
+                        ?.closest<HTMLElement>("[data-index]");
+                      if (target) {
+                        drag.current.to = Number(target.dataset.index);
+                        document
+                          .querySelectorAll(".edit-row")
+                          .forEach((el) =>
+                            el.classList.toggle("drop-target", el === target),
+                          );
+                      }
+                    }}
+                    onPointerUp={() => {
+                      if (drag.current) {
+                        const { from, to } = drag.current;
+                        editProgram((p) => {
+                          const d = p.days.find((d) => d.id === route.day)!;
+                          const [id] = d.exercises.splice(from, 1);
+                          d.exercises.splice(to, 0, id);
+                        });
+                        drag.current = null;
+                        document
+                          .querySelectorAll(".drop-target")
+                          .forEach((el) => el.classList.remove("drop-target"));
+                      }
+                    }}
+                    onPointerCancel={() => {
+                      drag.current = null;
+                      document
+                        .querySelectorAll(".drop-target")
+                        .forEach((el) => el.classList.remove("drop-target"));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                        e.preventDefault();
+                        const to = Math.min(
+                          day.exercises.length - 1,
+                          Math.max(0, index + (e.key === "ArrowDown" ? 1 : -1)),
+                        );
+                        editProgram((p) => {
+                          const d = p.days.find((d) => d.id === route.day)!;
+                          const [id] = d.exercises.splice(index, 1);
+                          d.exercises.splice(to, 0, id);
+                        });
+                      }
+                    }}
+                  >
+                    <GripVertical size={18} />
+                  </button>
+                  <Picture exercise={ex(id)} />
+                  <div>
+                    <strong>{ex(id).name}</strong>
+                    <small>{ex(id).group}</small>
+                    <button className="text" onClick={() => openPicker(id)}>
+                      <Replace size={13} />
+                      Заменить
+                    </button>
+                  </div>
+                  <button
+                    className="icon"
+                    aria-label={"Действия: " + ex(id).name}
+                    onClick={() => setModal({ type: "exercise-menu", id })}
+                  >
+                    <MoreHorizontal size={19} />
+                  </button>
+                </article>
+              ))}
+            </div>
+            <div className="sticky-action">
+              <button className="btn primary full" onClick={() => openPicker()}>
+                <Plus size={19} />
+                Добавить упражнения
+              </button>
+            </div>
+          </>
+        )}
+        {route.page === "workout" && current && activeParticipant && (
+          <>
+            {head(
+              current.participants.length === 2
+                ? "Парная тренировка"
+                : personById(activeParticipant.personId).name,
+              current.mode === "shared"
+                ? "Общие упражнения"
+                : activeParticipant.dayName,
+              { page: "today" },
+              <button
+                className="icon"
+                aria-label="Действия во время занятия"
+                onClick={() => setModal({ type: "workout-menu" })}
+              >
+                <MoreHorizontal size={22} />
+              </button>,
+            )}
+            {current.participants.length > 1 && (
+              <div className="participant-tabs">
+                {current.participants.map((p, i) => (
+                  <button
+                    key={p.personId}
+                    className={
+                      current.selected === i
+                        ? "selected"
+                        : ""
+                    }
+                    onClick={() => {
+                      const y = window.scrollY;
+                      changeAppointment((a) => {
+                        a.participants[a.selected].scroll = y;
+                        a.selected = i;
+                      });
+                      if (current.mode === "separate")
+                        window.scrollTo(0, current.participants[i].scroll);
+                    }}
+                  >
+                    <Avatar person={personById(p.personId)} small />
+                    <span>
+                      <strong>
+                        {personById(p.personId).name.split(" ")[0]}
+                      </strong>
+                      <small>
+                        {p.status === "done"
+                          ? "Завершено"
+                          : p.status === "absent"
+                            ? "Неявка"
+                            : `${p.entries.filter((e) => e.done).length} из ${p.entries.length}`}
+                      </small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="workout-progress">
+              <span>
+                {activeParticipant.entries.filter((e) => e.done).length} из{" "}
+                {activeParticipant.entries.length} выполнено
+              </span>
+              <span>1 рабочий подход</span>
+              <div>
+                <i
+                  style={{
+                    width: `${activeParticipant.entries.length ? (activeParticipant.entries.filter((e) => e.done).length / activeParticipant.entries.length) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+            {(current.mode === "shared"
+              ? current.participants[0]
+              : activeParticipant
+            ).entries.map((e, index) => {
+              const opened =
+                (current.mode === "shared"
+                  ? current.sharedOpened
+                  : activeParticipant.opened) === index;
+              const done =
+                current.mode === "shared"
+                  ? current.participants
+                      .filter((p) => p.status !== "absent")
+                      .every((p) => p.entries[index]?.done)
+                  : e.done;
+              return (
+                <article
+                  className={"workout-item " + (opened ? "opened" : "")}
+                  key={index}
+                >
+                  <button
+                    className="exercise-heading"
+                    onClick={() =>
+                      changeAppointment((a) => {
+                        if (a.mode === "shared")
+                          a.sharedOpened = opened ? -1 : index;
+                        else
+                          a.participants[a.selected].opened = opened
+                            ? -1
+                            : index;
+                      })
+                    }
+                  >
+                    <span className={"exercise-status " + (done ? "done" : "")}>
+                      {done ? (
+                        <Check size={17} />
+                      ) : (
+                        String(index + 1).padStart(2, "0")
+                      )}
+                    </span>
+                    <span>
+                      <strong>{e.name}</strong>
+                      <small>
+                        {done
+                          ? current.mode === "shared"
+                            ? "Результаты подтверждены"
+                            : format(e.weight, e.reps)
+                          : "Ещё не выполнено"}
+                      </small>
+                    </span>
+                    <ChevronRight
+                      className={opened ? "rotated" : ""}
+                      size={18}
+                    />
+                  </button>
+                  {opened && (
+                    <div className="exercise-detail">
+                      {photos(e.id)}
+                      {(current.mode === "shared"
+                        ? current.participants
+                        : [activeParticipant]
+                      ).map((p) => rowResult(p, index))}
+                      <button
+                        className="text replace-today"
+                        disabled={
+                          current.mode === "shared"
+                            ? current.participants.some(
+                                (p) => p.status === "done",
+                              ) ||
+                              current.participants.every(
+                                (p) => p.status !== "active",
+                              )
+                            : activeParticipant.status !== "active"
+                        }
+                        onClick={() => openPicker(e.id, index)}
+                      >
+                        <Replace size={15} />
+                        Заменить только сегодня
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+            <div className="sticky-action">
+              <button
+                className="btn primary full"
+                disabled={activeParticipant.status !== "active"}
+                onClick={() =>
+                  setModal({
+                    type: "finish",
+                    person: activeParticipant.personId,
+                  })
+                }
+              >
+                <CheckCircle2 size={18} />
+                {current.participants.length > 1
+                  ? "Завершить · " +
+                    personById(activeParticipant.personId).name.split(" ")[0]
+                  : "Завершить тренировку"}
+              </button>
+            </div>
+          </>
+        )}
+        {route.page === "summary" && current && (
+          <>
+            {head("Занятие сохранено", labelDate(current.date), {
+              page: "today",
+            })}
+            <div className="success-symbol">
+              <Check size={36} />
+            </div>
+            {current.participants.map((p) => (
+              <section className="surface" key={p.personId}>
+                <div className="row">
+                  <Avatar person={personById(p.personId)} />
+                  <div>
+                    <h2>{personById(p.personId).name}</h2>
+                    <p className="muted">
+                      {p.status === "done"
+                        ? "Тренировка завершена"
+                        : p.status === "absent"
+                          ? "Неявка"
+                          : "Ещё тренируется"}
+                    </p>
+                  </div>
+                </div>
+                <div className="stats">
+                  <div>
+                    <b>{p.entries.filter((e) => e.done).length}</b>
+                    <small>Выполнено</small>
+                  </div>
+                  <div>
+                    <b>
+                      {p.status === "done"
+                        ? p.entries.filter((e) => !e.done).length
+                        : "—"}
+                    </b>
+                    <small>Пропущено</small>
+                  </div>
+                </div>
+                {p.status === "done" && (
+                  <p className="next-label">
+                    Далее:{" "}
+                    {(() => {
+                      const pg = personById(p.personId).programs.find(
+                        (pg) => pg.active,
+                      );
+                      return pg?.days[pg.next]?.name ?? "Выберите программу";
+                    })()}
+                  </p>
+                )}
+              </section>
+            ))}
+            {current.status === "active" && (
+              <button
+                className="btn primary full"
+                onClick={() => {
+                  changeAppointment((a) => {
+                    a.selected = a.participants.findIndex(
+                      (p) => p.status === "active",
+                    );
+                  });
+                  go({ page: "workout", appointment: current.id });
+                }}
+              >
+                Продолжить с другим участником
+                <ArrowRight size={18} />
+              </button>
+            )}
+            <button
+              className="btn soft full"
+              onClick={() => go({ page: "today" })}
+            >
+              К расписанию
+            </button>
+          </>
+        )}
+        {route.page === "exercises" && (
+          <>
+            {head("Упражнения", "Общая библиотека")}
+            <div className="search">
+              <Search size={18} />
+              <input
+                aria-label="Поиск упражнений"
+                placeholder="Название упражнения"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="chips">
+              {["Все", ...sections].map((s) => (
+                <button
+                  key={s}
+                  className={group === s ? "selected" : ""}
+                  onClick={() => setGroup(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            {sections.map((s) => {
+              const items = filteredExercises.filter(
+                (e) => section(e.group) === s,
+              );
+              return items.length ? (
+                <section key={s}>
+                  <div className="section-title">
+                    <h2>{s}</h2>
+                    <span>{items.length}</span>
+                  </div>
+                  {items.map((e) => (
+                    <button
+                      className="library-row"
+                      key={e.id}
+                      onClick={() =>
+                        setModal({ type: "exercise-preview", id: e.id })
+                      }
+                    >
+                      <Picture exercise={e} />
+                      <span>
+                        <strong>{e.name}</strong>
+                        <small>{e.kind || e.group}</small>
+                      </span>
+                      <ChevronRight size={18} />
+                    </button>
+                  ))}
+                </section>
+              ) : null;
+            })}
+          </>
+        )}
+        {route.page === "more" && (
+          <>
+            {head("Ещё", "Всё для работы")}
+            <div className="section-title">
+              <h2>Шаблоны программ</h2>
+            </div>
+            {store.templates.map((t) => (
+              <button
+                key={t.id}
+                className="library-row"
+                onClick={() =>
+                  setModal({
+                    type: "copy-program",
+                    source: t,
+                    target: "self",
+                    template: true,
+                  })
+                }
+              >
+                <BookOpen size={22} />
+                <span>
+                  <strong>{t.name}</strong>
+                  <small>{quantity(t.days.length,["день","дня","дней"])} · Назначить человеку</small>
+                </span>
+                <ChevronRight size={18} />
+              </button>
+            ))}
+            {!store.templates.length && (
+              <p className="muted">
+                В меню программы выберите «Сохранить как шаблон».
+              </p>
+            )}
+            <section className="surface backup-section">
+              <h2>Резервная копия</h2>
+              <p>
+                Данные хранятся на этом телефоне. Сохраните копию перед сменой
+                устройства или очисткой браузера.
+              </p>
+              <button
+                className="btn primary full"
+                onClick={() => download(store, "moy-temp-" + iso() + ".json")}
+              >
+                Скачать резервную копию
+              </button>
+              <label className="btn soft full file-button">
+                Восстановить из файла
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    try {
+                      const next = migrate(JSON.parse(await f.text()));
+                      setImportValue(next);
+                      setModal({ type: "import" });
+                    } catch (err) {
+                      flash((err as Error).message);
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button
+                className="text"
+                onClick={async () => {
+                  const original = await getRecovery();
+                  if (original) download(original, "moy-temp-recovery.json");
+                  else flash("Исходной копии пока нет");
+                }}
+              >
+                Скачать данные до переноса или импорта
+              </button>
+            </section>
+            <InstallHelp />
+            <p className="footnote">
+              Мой темп · Формат данных 2 · Один телефон, без аккаунта
+            </p>
+          </>
+        )}
+      </main>
+      {!["workout", "summary", "day"].includes(route.page) && (
+        <nav className="bottom-nav" aria-label="Основная навигация">
+          {[
+            ["today", "Сегодня", CalendarDays],
+            ["people", "Люди", Users],
+            ["exercises", "Упражнения", Dumbbell],
+            ["more", "Ещё", MoreHorizontal],
+          ].map(([key, label, Icon]: any) => (
+            <button
+              key={key}
+              className={
+                route.page === key ||
+                (key === "people" && ["person", "program"].includes(route.page))
+                  ? "selected"
+                  : ""
+              }
+              onClick={() => go({ page: key })}
+            >
+              <Icon size={21} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+          {undo && (
+            <button
+              onClick={() => {
+                mutate(undo);
+                setUndo(null);
+                setToast("Действие отменено");
+              }}
+            >
+              Отменить
+            </button>
+          )}
+        </div>
+      )}
+      {modal && (
+        <div className="overlay" onClick={() => setModal(null)}>
+          <section
+            className={
+              "sheet " +
+              (["picker", "schedule", "exercise-preview"].includes(modal.type)
+                ? "tall"
+                : "")
+            }
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              modal.type === "picker"
+                ? "Выбор упражнений"
+                : modal.type === "schedule"
+                  ? "Новое занятие"
+                  : "Действия"
+            }
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sheet-top">
+              <span className="sheet-grip" />
+              <button
+                className="icon"
+                aria-label="Закрыть"
+                onClick={() => setModal(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="sheet-scroll">
+              {modal.type === "schedule" && (
+                <>
+                  <h2>
+                    {modal.editing
+                      ? "Изменить занятие"
+                      : modal.quick
+                        ? "Тренировка сейчас"
+                        : "Новое занятие"}
+                  </h2>
+                  <p className="muted">Один человек или пара</p>
+                  <label className="field-label">Участники</label>
+                  <div className="selection-people">
+                    {store.people.map((p) => {
+                      const chosen = modal.participants.some(
+                        (x: Participant) => x.personId === p.id,
+                      );
+                      return (
+                        <button
+                          key={p.id}
+                          className={chosen ? "chosen" : ""}
+                          onClick={() => {
+                            if (!chosen && modal.participants.length === 2)
+                              return;
+                            setModal({
+                              ...modal,
+                              participants: chosen
+                                ? modal.participants.filter(
+                                    (x: Participant) => x.personId !== p.id,
+                                  )
+                                : [
+                                    ...modal.participants,
+                                    participant(store, p.id),
+                                  ],
+                            });
+                          }}
+                        >
+                          <Avatar person={p} small />
+                          <span>{p.name}</span>
+                          <span className="checkbox">
+                            {chosen && <Check size={15} />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {modal.participants.length === 2 && (
+                    <>
+                      <label className="field-label">Как тренируемся</label>
+                      <div className="tabs">
+                        <button
+                          className={
+                            modal.mode === "separate" ? "selected" : ""
+                          }
+                          onClick={() =>
+                            setModal({ ...modal, mode: "separate" })
+                          }
+                        >
+                          Свои программы
+                        </button>
+                        <button
+                          className={modal.mode === "shared" ? "selected" : ""}
+                          onClick={() => setModal({ ...modal, mode: "shared" })}
+                        >
+                          Общие упражнения
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {modal.mode === "shared" &&
+                    modal.participants.length === 2 && (
+                      <label className="field">
+                        <span>Чья программа общая</span>
+                        <select
+                          value={modal.participants[0].personId}
+                          onChange={(e) =>
+                            setModal({
+                              ...modal,
+                              participants: [...modal.participants].sort(
+                                (a: Participant) =>
+                                  a.personId === e.target.value ? -1 : 1,
+                              ),
+                            })
+                          }
+                        >
+                          {modal.participants.map((p: Participant) => (
+                            <option key={p.personId} value={p.personId}>
+                              {personById(p.personId).name}
+                            </option>
+                          ))}
+                        </select>
+                        <small>Цикл второго участника не изменится.</small>
+                      </label>
+                    )}
+                  {modal.participants
+                    .filter(
+                      (p: Participant, i: number) =>
+                        (modal.mode !== "shared" || i === 0) &&
+                        !p.entries.length,
+                    )
+                    .map((p: Participant) => (
+                      <button
+                        className="btn outline full"
+                        key={p.personId}
+                        onClick={() => {
+                          go({ page: "person", person: p.personId });
+                          setPersonTab("Программы");
+                        }}
+                      >
+                        Добавить программу · {personById(p.personId).name}
+                      </button>
+                    ))}
+                  {modal.participants.map(
+                    (p: Participant, i: number) =>
+                      (modal.mode !== "shared" || i === 0) && (
+                        <label className="field" key={p.personId}>
+                          <span>
+                            {modal.mode === "shared"
+                              ? "Общий список из программы: "
+                              : ""}
+                            {personById(p.personId).name}
+                          </span>
+                          <select
+                            value={p.dayId ?? ""}
+                            onChange={(e) =>
+                              setModal({
+                                ...modal,
+                                participants: modal.participants.map(
+                                  (x: Participant, j: number) =>
+                                    j === i
+                                      ? participant(
+                                          store,
+                                          x.personId,
+                                          e.target.value,
+                                        )
+                                      : x,
+                                ),
+                              })
+                            }
+                          >
+                            {personById(p.personId)
+                              .programs.find((pg) => pg.active)
+                              ?.days.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.name}
+                                </option>
+                              )) ?? (
+                              <option value="">
+                                Сначала создайте программу
+                              </option>
+                            )}
+                          </select>
+                        </label>
+                      ),
+                  )}
+                  {!modal.quick && (
+                    <div className="two-col">
+                      <label className="field">
+                        <span>Дата</span>
+                        <input
+                          aria-label="Дата занятия"
+                          type="date"
+                          value={modal.date}
+                          onChange={(e) =>
+                            setModal({ ...modal, date: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Время</span>
+                        <input
+                          type="time"
+                          value={modal.time}
+                          onChange={(e) =>
+                            setModal({ ...modal, time: e.target.value })
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
+                  <label className="field">
+                    <span>Длительность</span>
+                    <select
+                      value={modal.duration}
+                      onChange={(e) =>
+                        setModal({ ...modal, duration: Number(e.target.value) })
+                      }
+                    >
+                      {[30, 45, 60, 75, 90, 120].map((n) => (
+                        <option value={n} key={n}>
+                          {n} минут
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {store.appointments.some((a) => overlaps(a, modal)) && (
+                    <p className="warning">
+                      В это время уже есть занятие. Можно сохранить, если
+                      пересечение запланировано.
+                    </p>
+                  )}
+                  <button
+                    className="btn primary full"
+                    disabled={
+                      !modal.participants.length ||
+                      !modal.date ||
+                      !modal.time ||
+                      modal.participants.some(
+                        (p: Participant, i: number) =>
+                          (modal.mode !== "shared" || i === 0) &&
+                          !p.entries.length,
+                      )
+                    }
+                    onClick={() => {
+                      const a: Appointment = {
+                        id: modal.id,
+                        date: modal.quick ? today : modal.date,
+                        time: modal.time,
+                        duration: modal.duration,
+                        mode: modal.mode,
+                        participants: structuredClone(modal.participants),
+                        status: "planned",
+                        selected: 0,
+                        sharedOpened: 0,
+                      };
+                      if (a.mode === "shared" && a.participants.length === 2) {
+                        a.participants[1] = {
+                          ...a.participants[1],
+                          programId: undefined,
+                          dayId: undefined,
+                          dayName: a.participants[0].dayName + " · совместная",
+                          entries: a.participants[0].entries.map((e) =>
+                            entry(store, a.participants[1].personId, e.id),
+                          ),
+                        };
+                      }
+                      if (modal.quick) {
+                        a.status = "active";
+                        a.participants.forEach((p) => (p.status = "active"));
+                        const conflict = store.appointments.find(
+                          (x) =>
+                            x.status === "active" &&
+                            x.participants.some(
+                              (p) =>
+                                p.status === "active" &&
+                                a.participants.some(
+                                  (t) => t.personId === p.personId,
+                                ),
+                            ),
+                        );
+                        if (conflict) {
+                          start(conflict.id);
+                          flash("Продолжаем начатое занятие");
+                          return;
+                        }
+                      }
+                      mutate((next) => {
+                        next.appointments = modal.editing
+                          ? next.appointments.map((x) =>
+                              x.id === a.id ? a : x,
+                            )
+                          : [...next.appointments, a];
+                      });
+                      setDate(a.date);
+                      go(
+                        modal.quick
+                          ? { page: "workout", appointment: a.id }
+                          : { page: "today" },
+                      );
+                      flash(
+                        modal.quick
+                          ? "Тренировка началась"
+                          : "Занятие сохранено",
+                      );
+                    }}
+                  >
+                    {modal.quick
+                      ? "Начать тренировку"
+                      : modal.editing
+                        ? "Сохранить изменения"
+                        : "Добавить в расписание"}
+                    <ArrowRight size={18} />
+                  </button>
+                </>
+              )}
+              {modal.type === "picker" && (
+                <>
+                  <h2>
+                    {modal.replace
+                      ? "Заменить упражнение"
+                      : "Добавить упражнения"}
+                  </h2>
+                  <p className="muted">
+                    {modal.workout !== undefined
+                      ? "Замена действует только в этом занятии"
+                      : modal.replace
+                        ? "Позиция в списке сохранится"
+                        : "Выберите сразу несколько упражнений"}
+                  </p>
+                  <div className="search">
+                    <Search size={18} />
+                    <input
+                      autoFocus
+                      placeholder="Найти упражнение"
+                      aria-label="Найти упражнение"
+                      value={modal.query}
+                      onChange={(e) =>
+                        setModal({ ...modal, query: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="chips">
+                    {["Все", ...sections].map((s) => (
+                      <button
+                        key={s}
+                        className={modal.group === s ? "selected" : ""}
+                        onClick={() => setModal({ ...modal, group: s })}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  {sections.map((s) => {
+                    const items = store.exercises.filter(
+                      (e) =>
+                        section(e.group) === s &&
+                        (modal.group === "Все" || s === modal.group) &&
+                        e.name
+                          .toLowerCase()
+                          .includes(modal.query.toLowerCase()),
+                    );
+                    return items.length ? (
+                      <section key={s}>
+                        <h3 className="group-title">{s}</h3>
+                        {items.map((e) => {
+                          const existing =
+                            modal.workout !== undefined
+                              ? activeParticipant!.entries.some(
+                                  (x) => x.id === e.id,
+                                )
+                              : day?.exercises.includes(e.id);
+                          const checked = modal.selected.includes(e.id);
+                          return (
+                            <button
+                              aria-pressed={checked}
+                              disabled={existing}
+                              className={
+                                "picker-row " + (checked ? "chosen" : "")
+                              }
+                              key={e.id}
+                              onClick={() =>
+                                setModal({
+                                  ...modal,
+                                  selected: modal.replace
+                                    ? [e.id]
+                                    : checked
+                                      ? modal.selected.filter(
+                                          (id: string) => id !== e.id,
+                                        )
+                                      : [...modal.selected, e.id],
+                                })
+                              }
+                            >
+                              <Picture exercise={e} />
+                              <span>
+                                <strong>{e.name}</strong>
+                                <small>
+                                  {existing
+                                    ? "Уже добавлено"
+                                    : e.kind || e.group}
+                                </small>
+                              </span>
+                              <span className="checkbox">
+                                {(checked || existing) && <Check size={15} />}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </section>
+                    ) : null;
+                  })}
+                </>
+              )}
+              {modal.type === "finish" &&
+                (() => {
+                  const p = current!.participants.find(
+                    (p) => p.personId === modal.person,
+                  )!;
+                  return (
+                    <>
+                      <h2>Завершить тренировку?</h2>
+                      <p className="muted">
+                        {personById(p.personId).name} ·{" "}
+                        {p.entries.filter((e) => e.done).length} из{" "}
+                        {p.entries.length} выполнено
+                      </p>
+                      {p.entries.some((e) => !e.done) && (
+                        <>
+                          <p>
+                            Эти упражнения сохранятся как пропущенные, без
+                            результатов:
+                          </p>
+                          <ul className="skip-list">
+                            {p.entries
+                              .filter((e) => !e.done)
+                              .map((e) => (
+                                <li key={e.id}>{ex(e.id).name}</li>
+                              ))}
+                          </ul>
+                        </>
+                      )}
+                      <button
+                        className="btn primary full"
+                        onClick={() => finishParticipant(p.personId)}
+                      >
+                        Сохранить и завершить
+                      </button>
+                      <button
+                        className="btn soft full"
+                        onClick={() => setModal(null)}
+                      >
+                        Вернуться к тренировке
+                      </button>
+                    </>
+                  );
+                })()}
+              {modal.type === "workout-menu" && (
+                <>
+                  <h2>Занятие</h2>
+                  <button
+                    className="menu-item"
+                    onClick={() => go({ page: "today" })}
+                  >
+                    <CalendarDays size={20} />
+                    Отложить и вернуться к расписанию
+                  </button>
+                  <button
+                    className="menu-item"
+                    onClick={() =>
+                      setModal({
+                        type: "absence",
+                        person: activeParticipant!.personId,
+                      })
+                    }
+                  >
+                    <UserRound size={20} />
+                    Отметить неявку участника
+                  </button>
+                  <p className="muted">
+                    Введённые результаты сохраняются автоматически.
+                  </p>
+                </>
+              )}
+              {modal.type === "absence" && (
+                <>
+                  <h2>Участник не пришёл?</h2>
+                  <p>
+                    {personById(modal.person).name}. Результаты не попадут в
+                    историю, день программы не изменится.
+                  </p>
+                  <button
+                    className="btn primary full"
+                    onClick={() => finishParticipant(modal.person, true)}
+                  >
+                    Подтвердить неявку
+                  </button>
+                </>
+              )}
+              {modal.type === "appointment-menu" &&
+                (() => {
+                  const a = store.appointments.find((a) => a.id === modal.id)!;
+                  return (
+                    <>
+                      <h2>
+                        {a.time} ·{" "}
+                        {a.participants
+                          .map((p) => personById(p.personId).name.split(" ")[0])
+                          .join(" + ")}
+                      </h2>
+                      {a.status === "planned" && (
+                        <>
+                          {a.participants
+                            .filter((p) => p.status === "pending")
+                            .map((p) => (
+                              <button
+                                key={p.personId}
+                                className="menu-item"
+                                onClick={() =>
+                                  setModal({
+                                    type: "planned-absence",
+                                    appointment: a.id,
+                                    person: p.personId,
+                                  })
+                                }
+                              >
+                                Неявка · {personById(p.personId).name}
+                              </button>
+                            ))}
+                          <button
+                            className="menu-item"
+                            onClick={() => newSchedule(false, a)}
+                          >
+                            <CalendarDays size={20} />
+                            Перенести или изменить
+                          </button>
+                          <button
+                            className="menu-item"
+                            onClick={() => {
+                              setUndo(() => (next: Store) => {
+                                const target = next.appointments.find(
+                                  (x) => x.id === a.id,
+                                );
+                                if (target?.status === "cancelled")
+                                  target.status = "planned";
+                              });
+                              mutate((next) => {
+                                next.appointments.find(
+                                  (x) => x.id === a.id,
+                                )!.status = "cancelled";
+                              });
+                              setModal(null);
+                              flash("Занятие отменено");
+                            }}
+                          >
+                            <X size={20} />
+                            Отменить занятие
+                          </button>
+                        </>
+                      )}
+                      {a.status !== "cancelled" && (
+                        <button
+                          className="menu-item"
+                          onClick={() => {
+                            go({
+                              page: a.status === "done" ? "summary" : "workout",
+                              appointment: a.id,
+                            });
+                            if (a.status === "planned") start(a.id);
+                          }}
+                        >
+                          <Play size={20} />
+                          Открыть занятие
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
+              {modal.type === "planned-absence" && (
+                <>
+                  <h2>Отметить неявку?</h2>
+                  <p>
+                    {personById(modal.person).name}. День программы не
+                    изменится.
+                  </p>
+                  <button
+                    className="btn primary full"
+                    onClick={() => {
+                      mutate((next) =>
+                        finish(next, modal.appointment, modal.person, true),
+                      );
+                      setModal(null);
+                      flash("Неявка сохранена");
+                    }}
+                  >
+                    Подтвердить неявку
+                  </button>
+                </>
+              )}
+              {modal.type === "person-edit" && (
+                <>
+                  <h2>{modal.id ? "О человеке" : "Новый человек"}</h2>
+                  <label className="field">
+                    <span>Имя</span>
+                    <input
+                      disabled={modal.id === "self"}
+                      aria-label="Имя человека"
+                      value={modal.name}
+                      onChange={(e) =>
+                        setModal({ ...modal, name: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Контакт</span>
+                    <input
+                      value={modal.contact ?? ""}
+                      onChange={(e) =>
+                        setModal({ ...modal, contact: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Заметка тренера</span>
+                    <textarea
+                      value={modal.note}
+                      onChange={(e) =>
+                        setModal({ ...modal, note: e.target.value })
+                      }
+                    />
+                  </label>
+                  <button
+                    className="btn primary full"
+                    disabled={!modal.name.trim()}
+                    onClick={() => {
+                      const id = modal.id ?? uid();
+                      mutate((next) => {
+                        const p = next.people.find((p) => p.id === id);
+                        if (p) {
+                          p.name = p.id === "self" ? "Я" : modal.name.trim();
+                          p.note = modal.note;
+                          p.contact = modal.contact ?? "";
+                          p.short =
+                            p.id === "self"
+                              ? "Я"
+                              : p.name.slice(0, 2).toUpperCase();
+                        } else
+                          next.people.push({
+                            id,
+                            name: modal.name.trim(),
+                            short: modal.name.trim().slice(0, 2).toUpperCase(),
+                            note: modal.note,
+                            contact: modal.contact ?? "",
+                            programs: [],
+                            flags: [],
+                            records: [],
+                          });
+                      });
+                      go({ page: "person", person: id });
+                    }}
+                  >
+                    Сохранить
+                  </button>
+                </>
+              )}
+              {(modal.type === "new-program" || modal.type === "new-day") && (
+                <>
+                  <h2>
+                    {modal.type === "new-day"
+                      ? "Новый день"
+                      : "Новая программа"}
+                  </h2>
+                  <label className="field">
+                    <span>Название</span>
+                    <input
+                      autoFocus
+                      value={modal.name}
+                      onChange={(e) =>
+                        setModal({ ...modal, name: e.target.value })
+                      }
+                    />
+                  </label>
+                  <button
+                    className="btn primary full"
+                    disabled={!modal.name.trim()}
+                    onClick={() => {
+                      if (modal.type === "new-day") {
+                        const d = {
+                          id: uid(),
+                          name: modal.name.trim(),
+                          exercises: [],
+                        };
+                        editProgram((pg) => pg.days.push(d));
+                        go({ ...route, page: "day", day: d.id });
+                      } else {
+                        const pg = {
+                          ...newProgram(modal.name.trim()),
+                          days: [],
+                        };
+                        mutate((next) => {
+                          const p = next.people.find(
+                            (p) => p.id === person!.id,
+                          )!;
+                          p.programs.forEach((pg) => (pg.active = false));
+                          p.programs.push(pg);
+                        });
+                        go({
+                          page: "program",
+                          person: person!.id,
+                          program: pg.id,
+                        });
+                      }
+                    }}
+                  >
+                    Создать
+                  </button>
+                </>
+              )}
+              {modal.type === "program-menu" && (
+                <>
+                  <h2>Программа</h2>
+                  <button
+                    className="menu-item"
+                    onClick={() =>
+                      setModal({ type: "rename", name: program!.name })
+                    }
+                  >
+                    Изменить название
+                  </button>
+                  <button
+                    className="menu-item"
+                    onClick={() =>
+                      setModal({
+                        type: "copy-program",
+                        source: program,
+                        target: person!.id,
+                      })
+                    }
+                  >
+                    <Copy size={19} />
+                    Копировать человеку
+                  </button>
+                  <button
+                    className="menu-item"
+                    onClick={() => {
+                      mutate((next) =>
+                        next.templates.push({
+                          ...structuredClone(program!),
+                          id: uid(),
+                          next: 0,
+                        }),
+                      );
+                      setModal(null);
+                      flash("Структура сохранена в общие шаблоны");
+                    }}
+                  >
+                    <BookOpen size={19} />
+                    Сохранить как шаблон
+                  </button>
+                  <button
+                    className="menu-item"
+                    onClick={() => {
+                      mutate((next) => {
+                        const p = next.people.find((p) => p.id === person!.id)!;
+                        p.programs.forEach((pg) => {
+                          pg.active =
+                            pg.id === program!.id ? !pg.active : false;
+                        });
+                      });
+                      setModal(null);
+                    }}
+                  >
+                    <Archive size={19} />
+                    {program!.active
+                      ? "Переместить в архив"
+                      : "Сделать активной"}
+                  </button>
+                </>
+              )}
+              {modal.type === "copy-program" && (
+                <>
+                  <h2>Копировать программу</h2>
+                  <p className="muted">
+                    Только упражнения и дни. Без результатов и пометок.
+                  </p>
+                  <label className="field">
+                    <span>Кому</span>
+                    <select
+                      value={modal.target}
+                      onChange={(e) =>
+                        setModal({ ...modal, target: e.target.value })
+                      }
+                    >
+                      {store.people.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="btn primary full"
+                    onClick={() => {
+                      mutate((next) => {
+                        const p = next.people.find(
+                          (p) => p.id === modal.target,
+                        )!;
+                        p.programs.push({
+                          ...structuredClone(modal.source),
+                          id: uid(),
+                          name: modal.source.name + " · копия",
+                          active: !p.programs.some((pg) => pg.active),
+                          next: 0,
+                          days: modal.source.days.map((d: Day) => ({
+                            ...d,
+                            id: uid(),
+                            exercises: [...d.exercises],
+                          })),
+                        });
+                      });
+                      go({ page: "person", person: modal.target });
+                      setPersonTab("Программы");
+                      flash("Независимая копия создана");
+                    }}
+                  >
+                    Создать копию
+                  </button>
+                </>
+              )}
+              {modal.type === "day-menu" && (
+                <>
+                  <h2>День программы</h2>
+                  <button
+                    className="menu-item"
+                    onClick={() =>
+                      setModal({
+                        type: "rename",
+                        name: day!.name,
+                        day: day!.id,
+                      })
+                    }
+                  >
+                    Изменить название
+                  </button>
+                  {[-1, 1].map((delta) => (
+                    <button
+                      className="menu-item"
+                      key={delta}
+                      disabled={
+                        program!.days.findIndex((d) => d.id === day!.id) +
+                          delta <
+                          0 ||
+                        program!.days.findIndex((d) => d.id === day!.id) +
+                          delta >=
+                          program!.days.length
+                      }
+                      onClick={() => {
+                        editProgram((pg) => {
+                          const nextId = pg.days[pg.next]?.id;
+                          const index = pg.days.findIndex(
+                            (d) => d.id === day!.id,
+                          );
+                          const [d] = pg.days.splice(index, 1);
+                          pg.days.splice(index + delta, 0, d);
+                          pg.next = Math.max(
+                            0,
+                            pg.days.findIndex((d) => d.id === nextId),
+                          );
+                        });
+                        setModal(null);
+                      }}
+                    >
+                      {delta < 0 ? "Раньше в программе" : "Позже в программе"}
+                    </button>
+                  ))}
+                  <button
+                    className="menu-item"
+                    onClick={() => {
+                      const copy = {
+                        ...structuredClone(day!),
+                        id: uid(),
+                        name: day!.name + " · копия",
+                      };
+                      editProgram((pg) => pg.days.push(copy));
+                      go({ ...route, day: copy.id });
+                      flash("День скопирован");
+                    }}
+                  >
+                    <Copy size={19} />
+                    Дублировать день
+                  </button>
+                  <button
+                    className="menu-item"
+                    onClick={() =>
+                      setModal({ type: "copy-day", target: person!.id })
+                    }
+                  >
+                    <Users size={19} />
+                    Копировать другому человеку
+                  </button>
+                </>
+              )}
+              {modal.type === "copy-day" && (
+                <>
+                  <h2>Копировать день</h2>
+                  <label className="field">
+                    <span>Кому</span>
+                    <select
+                      value={modal.target}
+                      onChange={(e) =>
+                        setModal({ ...modal, target: e.target.value })
+                      }
+                    >
+                      {store.people.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="btn primary full"
+                    onClick={() => {
+                      mutate((next) => {
+                        const p = next.people.find(
+                          (p) => p.id === modal.target,
+                        )!;
+                        let pg = p.programs.find((pg) => pg.active);
+                        if (!pg) {
+                          pg = { ...newProgram(), days: [] };
+                          p.programs.push(pg);
+                        }
+                        pg.days.push({
+                          ...structuredClone(day!),
+                          id: uid(),
+                          name: day!.name + " · копия",
+                        });
+                      });
+                      setModal(null);
+                      flash("День скопирован");
+                    }}
+                  >
+                    Скопировать в активную программу
+                  </button>
+                </>
+              )}
+              {modal.type === "exercise-menu" && (
+                <>
+                  <h2>{ex(modal.id).name}</h2>
+                  <button
+                    className="menu-item"
+                    onClick={() => openPicker(modal.id)}
+                  >
+                    <Replace size={19} />
+                    Заменить упражнение
+                  </button>
+                  <button
+                    className="menu-item danger"
+                    onClick={() => {
+                      const removedId = modal.id,
+                        dayId = day!.id,
+                        programId = program!.id,
+                        personId = person!.id,
+                        index = day!.exercises.indexOf(removedId);
+                      setUndo(() => (next: Store) => {
+                        const target = next.people
+                          .find((p) => p.id === personId)
+                          ?.programs.find((p) => p.id === programId)
+                          ?.days.find((d) => d.id === dayId);
+                        if (target && !target.exercises.includes(removedId))
+                          target.exercises.splice(
+                            Math.min(index, target.exercises.length),
+                            0,
+                            removedId,
+                          );
+                      });
+                      editProgram((pg) => {
+                        const d = pg.days.find((d) => d.id === route.day)!;
+                        d.exercises = d.exercises.filter(
+                          (id) => id !== modal.id,
+                        );
+                      });
+                      setModal(null);
+                      flash("Упражнение убрано");
+                    }}
+                  >
+                    <Trash2 size={19} />
+                    Убрать из этого дня
+                  </button>
+                </>
+              )}
+              {modal.type === "history" && (
+                <>
+                  <h2>{ex(modal.exercise).name}</h2>
+                  <p className="muted">{personById(modal.person).name}</p>
+                  {resultHistory(store, modal.person, modal.exercise)
+                    .reverse()
+                    .map((r, i) => (
+                      <div className="history-result" key={i}>
+                        <span>
+                          {r.date ? labelDate(r.date) : "Исходное значение"}
+                        </span>
+                        <b>{format(r.weight, r.reps)}</b>
+                      </div>
+                    ))}
+                </>
+              )}
+              {modal.type === "exercise-preview" && (
+                <ExerciseEditor
+                  exercise={ex(modal.id)}
+                  onSave={(exercise) => {
+                    mutate((next) => {
+                      next.exercises = next.exercises.map((e) =>
+                        e.id === exercise.id ? exercise : e,
+                      );
+                    });
+                    setModal(null);
+                    flash("Упражнение сохранено");
+                  }}
+                  onOpen={(index) => setLightbox({ id: modal.id, index })}
+                />
+              )}
+              {modal.type === "import" && importValue && (
+                <>
+                  <h2>Восстановить данные?</h2>
+                  <p>
+                    В файле: {importValue.people.length} человек,{" "}
+                    {importValue.sessions.length} завершённых тренировок. Копия
+                    заменит данные на этом телефоне. Текущее состояние
+                    сохранится для восстановления.
+                  </p>
+                  <button
+                    className="btn primary full"
+                    disabled={saving}
+                    onClick={async () => {
+                      try {
+                        const next = await importTraining(importValue);
+                        setStore(next);
+                        setImportValue(null);
+                        go({ page: "today" });
+                        flash("Данные восстановлены");
+                      } catch (e) {
+                        flash((e as Error).message);
+                      }
+                    }}
+                  >
+                    Восстановить
+                  </button>
+                </>
+              )}
+              {modal.type === "rename" && (
+                <>
+                  <h2>Название</h2>
+                  <label className="field">
+                    <span>Название</span>
+                    <input
+                      value={modal.name}
+                      onChange={(e) =>
+                        setModal({ ...modal, name: e.target.value })
+                      }
+                    />
+                  </label>
+                  <button
+                    className="btn primary full"
+                    disabled={!modal.name.trim()}
+                    onClick={() => {
+                      editProgram((pg) => {
+                        if (modal.day)
+                          pg.days.find((d) => d.id === modal.day)!.name =
+                            modal.name.trim();
+                        else pg.name = modal.name.trim();
+                      });
+                      setModal(null);
+                    }}
+                  >
+                    Сохранить
+                  </button>
+                </>
+              )}
+            </div>
+            {modal.type === "picker" && (
+              <div className="sheet-footer">
+                <button
+                  className="btn primary full"
+                  disabled={!modal.selected.length}
+                  onClick={savePicker}
+                >
+                  {modal.replace
+                    ? "Заменить упражнение"
+                    : `Добавить ${quantity(modal.selected.length)}`}
+                  <Check size={18} />
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+      {lightbox && (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Фотографии упражнения"
+        >
+          <button
+            className="icon"
+            aria-label="Закрыть галерею"
+            onClick={() => setLightbox(null)}
+          >
+            <X />
+          </button>
+          <Gallery
+            images={ex(lightbox.id).images.filter((x): x is string => !!x)}
+            name={ex(lightbox.id).name}
+            initial={lightbox.index}
+          />
+        </div>
+      )}
+    </div>
+  );
 }
-
-export default App
