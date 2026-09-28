@@ -756,12 +756,11 @@ function Trainer({ initial }: { initial: Store }) {
             <div className="section-title">
               <h2>Расписание</h2>
               <span>
-                {
+                {quantity(
                   store.appointments.filter(
                     (a) => a.date === date && a.status !== "active",
-                  ).length
-                }{" "}
-                занятия
+                  ).length, ["занятие", "занятия", "занятий"]
+                )}
               </span>
             </div>
             {store.appointments
