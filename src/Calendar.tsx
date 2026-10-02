@@ -11,11 +11,11 @@ function TrainingDay(props: DayButtonProps) {
   return (
     <DayButton {...props}>
       <span className="calendar-number">{props.day.date.getDate()}</span>
-      <span className="calendar-markers" aria-hidden="true">
-        {events.slice(0, 3).map((a) => (
-          <i key={a.id} className={a.status === "active" ? "live" : ""} />
-        ))}
-      </span>
+      {events.length > 0 && (
+        <span className="calendar-count" aria-hidden="true">
+          {events.length}
+        </span>
+      )}
     </DayButton>
   );
 }
@@ -65,16 +65,13 @@ export function Calendar({
             labelNext: () => "Следующий месяц календаря",
             labelDayButton: (d, modifiers) => {
               const sessions = events[iso(d)] ?? [];
-              return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}${modifiers.today ? ", сегодня" : ""}${modifiers.selected ? ", выбрано" : ""}${sessions.length ? ". " + sessions.map((a) => `${a.time || "Без времени"}: ${a.participants.map((p) => store.people.find((x) => x.id === p.personId)?.name).join(" + ")}`).join("; ") : ""}`;
+              return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}${modifiers.today ? ", сегодня" : ""}${modifiers.selected ? ", выбрано" : ""}${sessions.length ? ". Занятий: " + sessions.length + ". " + sessions.map((a) => `${a.time || "Без времени"}: ${a.participants.map((p) => store.people.find((x) => x.id === p.personId)?.name).join(" + ")}`).join("; ") : ""}`;
             },
           }}
         />
       </Events.Provider>
       <div className="calendar-footer">
-        <span className="calendar-legend">
-          <i />
-          Тренировки
-        </span>
+        <span className="calendar-legend">Количество занятий</span>
         <button
           className="calendar-today"
           onClick={() => {

@@ -71,6 +71,11 @@ export type Store = {
   sessions: Session[];
   templates: Program[];
 };
+export const scheduleTimes = Array.from(
+  { length: 25 },
+  (_, i) =>
+    `${String(8 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`,
+);
 export const uid = () => crypto.randomUUID();
 export const iso = (date = new Date()) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;

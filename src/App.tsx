@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type { Exercise } from "./seed";
 import { Calendar } from "./Calendar";
+import { ScheduleFields } from "./ScheduleFields";
 import { Gallery, PhotoGrid } from "./Gallery";
 import { Preparation } from "./Preparation";
 import { ExerciseEditor } from "./ExerciseEditor";
@@ -36,6 +37,7 @@ import {
 } from "./training-db";
 import {
   uid,
+  scheduleTimes,
   iso,
   format,
   newProgram,
@@ -363,7 +365,14 @@ function Trainer({ initial }: { initial: Store }) {
       ...structuredClone(sample),
       participants: existing
         ? structuredClone(existing.participants)
-        : sample.participants.map((p) => oneOffParticipant(p.personId)),
+        : quick || person
+          ? sample.participants.map((p) => oneOffParticipant(p.personId))
+          : [],
+      time: existing?.time ?? (quick ? sample.time : ""),
+      pair: (existing?.participants.length ?? 1) === 2,
+      manualTime: !!existing?.time && !scheduleTimes.includes(existing.time),
+      changeDate: false,
+      peopleQuery: "",
       date: existing?.date ?? date,
       quick,
       editing: !!existing,
@@ -811,7 +820,7 @@ function Trainer({ initial }: { initial: Store }) {
               undefined,
               <button
                 className="icon"
-                aria-label="Запланировать занятие"
+                aria-label="Записать"
                 onClick={() => newSchedule()}
               >
                 <Plus size={23} />
@@ -824,6 +833,13 @@ function Trainer({ initial }: { initial: Store }) {
               today={today}
               onChange={setDate}
             />
+            <button
+              className="btn primary full schedule-create"
+              onClick={() => newSchedule()}
+            >
+              <Plus size={18} />
+              Записать
+            </button>
             {!store.appointments.some((a) => a.status === "active") && (
               <button className="quick-start" onClick={() => newSchedule(true)}>
                 <span className="quick-icon">
@@ -1988,7 +2004,12 @@ function Trainer({ initial }: { initial: Store }) {
                 <X size={20} />
               </button>
             </div>
-            <div className="sheet-scroll">
+            <div
+              className={
+                "sheet-scroll " +
+                (modal.type === "schedule" ? "schedule-scroll" : "")
+              }
+            >
               {modal.type === "schedule" && (
                 <>
                   <h2>
@@ -1996,80 +2017,15 @@ function Trainer({ initial }: { initial: Store }) {
                       ? "Изменить занятие"
                       : modal.quick
                         ? "Тренировка сейчас"
-                        : "Новое занятие"}
+                        : "Записать на занятие"}
                   </h2>
-                  <p className="muted">
-                    Выберите участников. Упражнения можно составить позже.
-                  </p>
-                  <label className="field-label">Участники</label>
-                  <div className="selection-people">
-                    {store.people.map((p) => {
-                      const chosen = modal.participants.some(
-                        (x: Participant) => x.personId === p.id,
-                      );
-                      return (
-                        <button
-                          key={p.id}
-                          aria-pressed={chosen}
-                          className={chosen ? "chosen" : ""}
-                          disabled={!chosen && modal.participants.length === 2}
-                          onClick={() =>
-                            setModal({
-                              ...modal,
-                              participants: chosen
-                                ? modal.participants.filter(
-                                    (x: Participant) => x.personId !== p.id,
-                                  )
-                                : [
-                                    ...modal.participants,
-                                    oneOffParticipant(p.id),
-                                  ],
-                            })
-                          }
-                        >
-                          <Avatar person={p} small />
-                          <span>{p.name}</span>
-                          <span className="checkbox">
-                            {chosen && <Check size={15} />}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {!modal.quick && (
-                    <div className="two-col">
-                      <label className="field">
-                        <span>Дата</span>
-                        <input
-                          aria-label="Дата занятия"
-                          type="date"
-                          value={modal.date}
-                          onInput={(e) =>
-                            setModal({ ...modal, date: e.currentTarget.value })
-                          }
-                          onChange={(e) =>
-                            setModal({ ...modal, date: e.target.value })
-                          }
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Время</span>
-                        <input
-                          aria-label="Время занятия"
-                          type="time"
-                          value={modal.time}
-                          onInput={(e) =>
-                            setModal({ ...modal, time: e.currentTarget.value })
-                          }
-                          onChange={(e) =>
-                            setModal({ ...modal, time: e.target.value })
-                          }
-                        />
-                      </label>
-                    </div>
-                  )}
+                  <ScheduleFields
+                    store={store}
+                    draft={modal}
+                    onChange={(value) => setModal({ ...modal, ...value })}
+                  />
                   <button
-                    className="btn primary full"
+                    className="btn primary full schedule-save"
                     disabled={
                       !modal.participants.length || !modal.date || !modal.time
                     }
@@ -2137,7 +2093,7 @@ function Trainer({ initial }: { initial: Store }) {
                       ? "Начать тренировку"
                       : modal.editing
                         ? "Сохранить изменения"
-                        : "Добавить в расписание"}
+                        : "Записать"}
                     <ArrowRight size={18} />
                   </button>
                 </>
