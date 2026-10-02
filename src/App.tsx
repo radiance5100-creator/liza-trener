@@ -670,6 +670,7 @@ function Trainer({ initial }: { initial: Store }) {
     subtitle?: string,
     back?: Route,
     action?: any,
+    titleAction?: any,
   ) => (
     <>
       <header className="topbar">
@@ -688,9 +689,12 @@ function Trainer({ initial }: { initial: Store }) {
         </span>
         {action ?? <span className="spacer" />}
       </header>
-      <div className="page-title">
-        <h1>{title}</h1>
-        {subtitle && <p>{subtitle}</p>}
+      <div className={"page-title" + (titleAction ? " with-action" : "")}>
+        <div>
+          <h1>{title}</h1>
+          {subtitle && <p>{subtitle}</p>}
+        </div>
+        {titleAction}
       </div>
     </>
   );
@@ -821,11 +825,17 @@ function Trainer({ initial }: { initial: Store }) {
               undefined,
               <button
                 className="icon"
-                aria-label="Записать"
+                aria-label="Запись тренировки"
                 onClick={() => newSchedule()}
               >
                 <Plus size={23} />
               </button>,
+              !store.appointments.some((a) => a.status === "active") ? (
+                <button className="quick-start" onClick={() => newSchedule(true)}>
+                  <Play size={16} aria-hidden="true" />
+                  <span>Начать тренировку</span>
+                </button>
+              ) : undefined,
             )}
             <Calendar
               key={date.slice(0, 7)}
@@ -839,20 +849,8 @@ function Trainer({ initial }: { initial: Store }) {
               onClick={() => newSchedule()}
             >
               <Plus size={18} />
-              Записать
+              Запись тренировки
             </button>
-            {!store.appointments.some((a) => a.status === "active") && (
-              <button className="quick-start" onClick={() => newSchedule(true)}>
-                <span className="quick-icon">
-                  <Play size={18} />
-                </span>
-                <span>
-                  <strong>Тренировка сейчас</strong>
-                  <small>Без записи в расписании</small>
-                </span>
-                <ChevronRight size={18} />
-              </button>
-            )}
             {store.appointments.some(
               (a) => a.status === "active" && a.date !== date,
             ) && (
@@ -1939,8 +1937,8 @@ function Trainer({ initial }: { initial: Store }) {
                     {modal.editing
                       ? "Изменить занятие"
                       : modal.quick
-                        ? "Тренировка сейчас"
-                        : "Записать на занятие"}
+                        ? "Начать тренировку"
+                        : "Запись тренировки"}
                   </h2>
                   <ScheduleFields
                     store={store}
@@ -2016,7 +2014,7 @@ function Trainer({ initial }: { initial: Store }) {
                       ? "Начать тренировку"
                       : modal.editing
                         ? "Сохранить изменения"
-                        : "Записать"}
+                        : "Запись тренировки"}
                     <ArrowRight size={18} />
                   </button>
                 </>
