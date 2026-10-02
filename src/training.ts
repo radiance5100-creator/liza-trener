@@ -20,6 +20,7 @@ export type Person = {
   id: string;
   name: string;
   short: string;
+  avatar?: { photo?: string; color?: string };
   note: string;
   contact: string;
   programs: Program[];
@@ -672,6 +673,9 @@ export function validateStore(value: unknown): Store {
         str(p.id) &&
         str(p.name) &&
         str(p.short) &&
+        (p.avatar === undefined || (obj(p.avatar) &&
+          (p.avatar.photo === undefined || (str(p.avatar.photo) && /^data:image\/(jpeg|png|webp|gif);base64,/.test(p.avatar.photo))) &&
+          (p.avatar.color === undefined || (str(p.avatar.color) && /^#[0-9a-f]{6}$/i.test(p.avatar.color))))) &&
         str(p.contact) &&
         str(p.note) &&
         list(p.programs, program) &&

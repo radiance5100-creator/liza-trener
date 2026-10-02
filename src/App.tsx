@@ -28,6 +28,7 @@ import { Calendar } from "./Calendar";
 import { ScheduleFields } from "./ScheduleFields";
 import { Gallery, PhotoGrid } from "./Gallery";
 import { Preparation } from "./Preparation";
+import { Avatar, AvatarEditor } from "./Avatar";
 import { ProgressTable } from "./ProgressTable";
 import { ExerciseEditor } from "./ExerciseEditor";
 import {
@@ -100,20 +101,7 @@ const section = (group: string) =>
   ["Бицепс", "Трицепс", "Икры", "Предплечья"].includes(group)
     ? sections[4]
     : group;
-export function Avatar({
-  person,
-  small = false,
-}: {
-  person: Person;
-  small?: boolean;
-}) {
-  return (
-    <span className={"avatar " + (small ? "small " : "") + person.id}>
-      {person.short}
-    </span>
-  );
-}
-function Picture({ exercise }: { exercise: Exercise }) {
+export function Picture({ exercise }: { exercise: Exercise }) {
   const photo = exercise.images.find(Boolean);
   return (
     <div className="mini-photo">
@@ -963,6 +951,7 @@ function Trainer({ initial }: { initial: Store }) {
                     name: person.name,
                     note: person.note,
                     contact: person.contact,
+                    avatar: person.avatar,
                   })
                 }
               >
@@ -2377,6 +2366,11 @@ function Trainer({ initial }: { initial: Store }) {
               {modal.type === "person-edit" && (
                 <>
                   <h2>{modal.id ? "О человеке" : "Новый человек"}</h2>
+                  <AvatarEditor key={modal.id ?? "new"}
+                    person={{ id: modal.id ?? "new", name: modal.name, short: modal.id === "self" ? "Я" : modal.name.trim().slice(0, 2).toUpperCase(), avatar: modal.avatar } as Person}
+                    onChange={(avatar) => setModal((old: any) => old?.type === "person-edit" && old.id === modal.id ? { ...old, avatar } : old)}
+                    onBusy={(avatarBusy) => setModal((old: any) => old?.type === "person-edit" && old.id === modal.id ? { ...old, avatarBusy } : old)}
+                  />
                   <label className="field">
                     <span>Имя</span>
                     <input
@@ -2408,7 +2402,7 @@ function Trainer({ initial }: { initial: Store }) {
                   </label>
                   <button
                     className="btn primary full"
-                    disabled={!modal.name.trim()}
+                    disabled={!modal.name.trim() || modal.avatarBusy}
                     onClick={() => {
                       const id = modal.id ?? uid();
                       mutate((next) => {
@@ -2417,6 +2411,7 @@ function Trainer({ initial }: { initial: Store }) {
                           p.name = p.id === "self" ? "Я" : modal.name.trim();
                           p.note = modal.note;
                           p.contact = modal.contact ?? "";
+                          p.avatar = modal.avatar;
                           p.short =
                             p.id === "self"
                               ? "Я"
@@ -2428,6 +2423,7 @@ function Trainer({ initial }: { initial: Store }) {
                             short: modal.name.trim().slice(0, 2).toUpperCase(),
                             note: modal.note,
                             contact: modal.contact ?? "",
+                            avatar: modal.avatar,
                             programs: [],
                             flags: [],
                             records: [],

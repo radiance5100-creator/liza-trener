@@ -12,6 +12,16 @@ function load(name) {
 }
 const t=load('training');
 
+test('optional avatars survive backups and old stores, and invalid image/color values are rejected',()=>{
+ const s=t.emptyStore();assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);
+ s.people[0].avatar={color:'#ffb162',photo:'data:image/jpeg;base64,dGVzdA=='};
+ assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))).people[0].avatar,s.people[0].avatar);
+ for(const avatar of [{photo:'https://example.com/photo.jpg'},{photo:'data:image/svg+xml;base64,dGVzdA=='},{color:'red'},{color:'#abc'},{photo:42}]) {
+   const bad=structuredClone(s);bad.people[0].avatar=avatar;assert.throws(()=>t.validateStore(bad));
+ }
+ delete s.people[0].avatar.photo;assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))).people[0].avatar,{color:'#ffb162'});
+});
+
 test('confirmation advances forward, wraps skipped rows, and waits for active shared participants',()=>{
  const s=t.emptyStore(), ids=s.exercises.slice(0,3).map(e=>e.id), a=t.appointment(s,['self'],'10:00');
  a.status='active';const p=a.participants[0];p.status='active';p.entries=ids.map(id=>({...t.entry(s,'self',id),weight:'0',reps:'8'}));

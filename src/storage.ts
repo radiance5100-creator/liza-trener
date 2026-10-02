@@ -52,11 +52,11 @@ export function validateData(value: unknown): AppData {
   return { ...data, clients, techniques: data.techniques ?? {} } as AppData
 }
 
-export async function imageToDataUrl(file: File): Promise<string> {
+export async function imageToDataUrl(file: File, maxSize = 1600): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Выберите изображение')
   try {
     const bitmap = await createImageBitmap(file)
-    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height))
+    const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height))
     const canvas = document.createElement('canvas')
     canvas.width = Math.round(bitmap.width * scale)
     canvas.height = Math.round(bitmap.height * scale)
