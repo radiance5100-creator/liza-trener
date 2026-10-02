@@ -1,70 +1,178 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
 .calendar {
-  margin: 0 -14px 18px;
+  margin: 0 -10px 22px;
+  padding: 12px;
+  background: #fbf8f2;
+  border: 1px solid #e3dccf;
+  border-radius: 22px;
+  box-shadow: 0 5px 20px #2c3b4d04;
 }
-.calendar-title {
-  padding: 0 8px 8px;
+.calendar .rdp-root {
+  --rdp-accent-color: var(--navy);
+  --rdp-day-height: 52px;
+  --rdp-day-width: auto;
+  --rdp-nav_button-width: 44px;
+  --rdp-nav_button-height: 44px;
+  --rdp-outside-opacity: 0.35;
+  width: 100%;
+}
+.calendar .rdp-months {
+  display: block;
+  max-width: none;
+  width: 100%;
+}
+.calendar .rdp-month {
+  width: 100%;
+}
+.calendar .rdp-month_grid {
+  width: 100%;
+  table-layout: fixed;
+  border-spacing: 0;
+}
+.calendar .rdp-month_caption {
+  height: 52px;
+  margin-bottom: 8px;
+  padding-left: 8px;
+}
+.calendar .rdp-caption_label {
+  text-transform: capitalize;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.calendar .rdp-nav {
+  height: 52px;
+  gap: 2px;
+}
+.calendar .rdp-button_next,
+.calendar .rdp-button_previous {
+  border-radius: 12px;
+  background: #f0ece4;
+  width: 44px;
+  height: 44px;
+}
+.calendar .rdp-chevron {
+  width: 17px;
+  height: 17px;
+  fill: var(--navy);
+}
+.calendar .rdp-weekday {
+  padding: 4px 0 12px;
+  color: #858078;
+  font-weight: 500;
+  font-size: 11px;
   text-transform: capitalize;
 }
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+.calendar .rdp-day {
+  height: 52px;
+  padding: 0;
 }
-.calendar-weekday {
-  text-align: center;
-  color: var(--muted);
-  font-size: 11px;
-  padding: 8px 0;
-}
-.calendar-day {
-  min-height: 64px;
-  min-width: 0;
-  border: 1px solid var(--line);
-  background: transparent;
-  padding: 5px 2px;
+.calendar .rdp-day_button {
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 14px;
+  position: relative;
   display: flex;
-  align-items: center;
   flex-direction: column;
-  gap: 3px;
-  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
 }
-.calendar-day b {
-  font-size: 13px;
-  line-height: 20px;
+.calendar .rdp-day_button:hover {
+  background: #f0ece4;
 }
-.calendar-day.outside {
-  opacity: 0.45;
+.calendar .rdp-selected .rdp-day_button {
+  background: var(--navy);
+  color: #fff;
+  box-shadow: 0 4px 8px #2c3b4d15;
+  font-weight: 800;
 }
-.calendar-day.is-today b {
+.calendar .rdp-today:not(.rdp-selected) .rdp-day_button {
+  background: #eee9df;
+  color: var(--navy);
+}
+.calendar .rdp-today:not(.rdp-selected) .calendar-number {
   text-decoration: underline;
   text-underline-offset: 4px;
 }
-.calendar-day.selected {
-  background: var(--navy);
-  color: white;
-  border-color: var(--navy);
+.calendar-number {
+  line-height: 24px;
+  padding-bottom: 4px;
 }
-.calendar-event {
-  background: #ded8cc;
-  color: var(--navy);
-  border-radius: 4px;
-  padding: 1px 3px;
-  font-size: 9px;
-  line-height: 13px;
-  font-weight: 800;
+.calendar-markers {
+  position: absolute;
+  bottom: 5px;
+  height: 5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
-.calendar-event.active {
+.calendar-markers i,
+.calendar-legend i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--clay);
+}
+.calendar-markers i.live {
+  background: #d88536;
+}
+.calendar .rdp-selected .calendar-markers i {
   background: var(--orange);
 }
-.calendar-event.done {
-  background: var(--clay);
-  color: white;
+.calendar-footer {
+  border-top: 1px solid #eee7db;
+  margin-top: 8px;
+  padding: 8px 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.calendar-legend {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #858078;
+  font-size: 10px;
 }
 .calendar-today {
-  display: flex;
-  margin: 6px auto 0;
+  border: 0;
+  border-radius: 12px;
+  background: #f0ece4;
+  padding: 0 14px;
   min-height: 44px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.person-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: -8px 0 10px;
+}
+.person-actions .text {
+  display: flex;
   align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  font-size: 12px;
+  color: var(--clay);
+}
+@media (max-width: 350px) {
+  .calendar {
+    padding: 8px 0;
+  }
+  .calendar .rdp-caption_label {
+    font-size: 16px;
+  }
+  .calendar .rdp-month_caption {
+    padding-left: 12px;
+  }
+  .calendar .rdp-nav {
+    right: 4px;
+  }
 }
 .workout-tools {
   display: grid;

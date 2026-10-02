@@ -1,6 +1,24 @@
-import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { iso, type Store } from "./training";
+import { createContext, useContext, useState } from "react";
+import { DayPicker, DayButton, type DayButtonProps } from "@daypicker/react";
+import { ru } from "@daypicker/react/locale";
+import "@daypicker/react/style.css";
+import { iso, type Appointment, type Store } from "./training";
+
+const Events = createContext<Record<string, Appointment[]>>({});
+
+function TrainingDay(props: DayButtonProps) {
+  const events = useContext(Events)[iso(props.day.date)] ?? [];
+  return (
+    <DayButton {...props}>
+      <span className="calendar-number">{props.day.date.getDate()}</span>
+      <span className="calendar-markers" aria-hidden="true">
+        {events.slice(0, 3).map((a) => (
+          <i key={a.id} className={a.status === "active" ? "live" : ""} />
+        ))}
+      </span>
+    </DayButton>
+  );
+}
 
 export function Calendar({
   store,
@@ -13,100 +31,60 @@ export function Calendar({
   today: string;
   onChange: (date: string) => void;
 }) {
-  const [month, setMonth] = useState(date.slice(0, 7));
-  const first = new Date(month + "-01T12:00:00");
-  const offset = (first.getDay() + 6) % 7;
-  const length = new Date(
-    first.getFullYear(),
-    first.getMonth() + 1,
-    0,
-  ).getDate();
-  const move = (n: number) => {
-    const d = new Date(first);
-    d.setMonth(d.getMonth() + n);
-    setMonth(iso(d).slice(0, 7));
-  };
+  const selected = new Date(date + "T12:00:00");
+  const [month, setMonth] = useState(selected);
+  const events: Record<string, Appointment[]> = {};
+  store.appointments
+    .filter((a) => a.status !== "cancelled")
+    .forEach((a) => {
+      (events[a.date] ??= []).push(a);
+    });
   return (
     <section className="calendar" aria-label="Календарь тренировок">
-      <div className="row between calendar-title">
+      <Events.Provider value={events}>
+        <DayPicker
+          mode="single"
+          required
+          selected={selected}
+          today={new Date(today + "T12:00:00")}
+          onSelect={(d) => {
+            if (d) {
+              onChange(iso(d));
+              setMonth(d);
+            }
+          }}
+          month={month}
+          onMonthChange={setMonth}
+          locale={ru}
+          weekStartsOn={1}
+          showOutsideDays
+          navLayout="after"
+          components={{ DayButton: TrainingDay }}
+          labels={{
+            labelPrevious: () => "Предыдущий месяц календаря",
+            labelNext: () => "Следующий месяц календаря",
+            labelDayButton: (d, modifiers) => {
+              const sessions = events[iso(d)] ?? [];
+              return `${d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}${modifiers.today ? ", сегодня" : ""}${modifiers.selected ? ", выбрано" : ""}${sessions.length ? ". " + sessions.map((a) => `${a.time || "Без времени"}: ${a.participants.map((p) => store.people.find((x) => x.id === p.personId)?.name).join(" + ")}`).join("; ") : ""}`;
+            },
+          }}
+        />
+      </Events.Provider>
+      <div className="calendar-footer">
+        <span className="calendar-legend">
+          <i />
+          Тренировки
+        </span>
         <button
-          className="icon"
-          aria-label="Предыдущий месяц календаря"
-          onClick={() => move(-1)}
+          className="calendar-today"
+          onClick={() => {
+            setMonth(new Date(today + "T12:00:00"));
+            onChange(today);
+          }}
         >
-          <ChevronLeft size={18} />
-        </button>
-        <strong>
-          {first.toLocaleDateString("ru-RU", {
-            month: "long",
-            year: "numeric",
-          })}
-        </strong>
-        <button
-          className="icon"
-          aria-label="Следующий месяц календаря"
-          onClick={() => move(1)}
-        >
-          <ChevronRight size={18} />
+          Сегодня
         </button>
       </div>
-      <div className="calendar-grid">
-        {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((d) => (
-          <span className="calendar-weekday" key={d}>
-            {d}
-          </span>
-        ))}
-        {Array.from(
-          { length: Math.ceil((offset + length) / 7) * 7 },
-          (_, i) => {
-            const d = new Date(first);
-            d.setDate(i - offset + 1);
-            const key = iso(d),
-              outside = d.getMonth() !== first.getMonth();
-            const events = store.appointments
-              .filter((a) => a.date === key && a.status !== "cancelled")
-              .sort((a, b) => a.time.localeCompare(b.time));
-            const descriptions = events.map(
-              (a) =>
-                `${a.time || "Без времени"}: ${a.participants.map((p) => store.people.find((x) => x.id === p.personId)?.name).join(" + ")}`,
-            );
-            return (
-              <button
-                key={key}
-                className={`calendar-day ${key === date ? "selected" : ""} ${outside ? "outside" : ""} ${key === today ? "is-today" : ""}`}
-                aria-pressed={key === date}
-                aria-current={key === today ? "date" : undefined}
-                aria-label={`${d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}${descriptions.length ? ". " + descriptions.join("; ") : ""}`}
-                onClick={() => {
-                  onChange(key);
-                  if (outside) setMonth(key.slice(0, 7));
-                }}
-              >
-                <b>{d.getDate()}</b>
-                {events.slice(0, 2).map((a) => (
-                  <span
-                    key={a.id}
-                    className={`calendar-event ${a.status}`}
-                    title={descriptions[events.indexOf(a)]}
-                  >
-                    {a.time || "•"}
-                  </span>
-                ))}
-                {events.length > 2 && <small>+{events.length - 2}</small>}
-              </button>
-            );
-          },
-        )}
-      </div>
-      <button
-        className="text calendar-today"
-        onClick={() => {
-          setMonth(today.slice(0, 7));
-          onChange(today);
-        }}
-      >
-        Сегодня
-      </button>
     </section>
   );
 }

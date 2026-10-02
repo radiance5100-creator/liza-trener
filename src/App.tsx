@@ -906,6 +906,19 @@ function Trainer({ initial }: { initial: Store }) {
                 <MoreHorizontal size={22} />
               </button>,
             )}
+            {person.id !== "self" && (
+              <div className="person-actions">
+                <button
+                  className="text danger"
+                  onClick={() =>
+                    setModal({ type: "delete-person", id: person.id })
+                  }
+                >
+                  <Trash2 size={16} />
+                  Удалить клиента
+                </button>
+              </div>
+            )}
             <div className="tabs">
               {["Обзор", "Программы", "История"].map((tab) => (
                 <button
@@ -1438,7 +1451,6 @@ function Trainer({ initial }: { initial: Store }) {
                 {activeParticipant.entries.filter((e) => e.done).length} из{" "}
                 {activeParticipant.entries.length} выполнено
               </span>
-              <span>1 рабочий подход</span>
               <div>
                 <i
                   style={{
@@ -1488,13 +1500,13 @@ function Trainer({ initial }: { initial: Store }) {
                     </span>
                     <span>
                       <strong>{e.name}</strong>
-                      <small>
-                        {done
-                          ? current.mode === "shared"
+                      {done && (
+                        <small>
+                          {current.mode === "shared"
                             ? "Результаты подтверждены"
-                            : format(e.weight, e.reps)
-                          : "Ещё не выполнено"}
-                      </small>
+                            : format(e.weight, e.reps)}
+                        </small>
+                      )}
                     </span>
                     <ChevronRight
                       className={opened ? "rotated" : ""}
