@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import type { Exercise } from "./seed";
 import { Calendar } from "./Calendar";
-import { Gallery } from "./Gallery";
+import { Gallery, PhotoGrid } from "./Gallery";
+import { Preparation } from "./Preparation";
 import { ExerciseEditor } from "./ExerciseEditor";
 import {
   loadTraining,
@@ -45,6 +46,11 @@ import {
   startAppointment,
   oneOffParticipant,
   addWorkoutExercises,
+  confirmEntry,
+  prepareExercises,
+  prepareDay,
+  prepareMode,
+  correctResult,
   removePerson,
   resultHistory,
   migrate,
@@ -175,7 +181,7 @@ function Trainer({ initial }: { initial: Store }) {
   } | null>(null);
   const ex = (id: string) => store.exercises.find((e) => e.id === id)!;
   const photos = (id: string) => (
-    <Gallery
+    <PhotoGrid
       key={id}
       images={ex(id).images.filter((x): x is string => !!x)}
       name={ex(id).name}
@@ -183,6 +189,7 @@ function Trainer({ initial }: { initial: Store }) {
     />
   );
   const [importValue, setImportValue] = useState<Store | null>(null);
+  const scrollAfterConfirm = useRef(false);
   const [store, setStore] = useState<Store>(initial);
   const [route, setRoute] = useState<Route>({ page: "today" });
   const [date, setDate] = useState(today);
@@ -459,10 +466,33 @@ function Trainer({ initial }: { initial: Store }) {
       next.appointments.push(restored);
     });
   }
+  useEffect(() => {
+    if (!scrollAfterConfirm.current || route.page !== "workout" || !current)
+      return;
+    scrollAfterConfirm.current = false;
+    const frame = requestAnimationFrame(() => {
+      const index =
+        current.mode === "shared"
+          ? current.sharedOpened
+          : current.participants[current.selected].opened;
+      const target =
+        index < 0
+          ? document.querySelector(".workout-finish")
+          : document.querySelector('[data-workout-index="' + index + '"]');
+      target?.scrollIntoView({
+        block: index < 0 ? "end" : "start",
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "instant"
+          : "smooth",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [store, route.page, current]);
   function rowResult(p: Participant, index: number) {
     const e = p.entries[index];
     if (!e) return null;
     const who = personById(p.personId);
+    const last = resultHistory(store, p.personId, e.id).at(-1);
     return (
       <div
         className={"result-form " + (e.done ? "confirmed" : "")}
@@ -483,17 +513,24 @@ function Trainer({ initial }: { initial: Store }) {
             <CircleHelp size={17} />
           </button>
         </div>
-        <p className="previous">
-          {e.previous ? (
+        <button
+          className="previous previous-history"
+          onClick={() =>
+            setModal({ type: "history", person: p.personId, exercise: e.id })
+          }
+          aria-label={"История упражнения: " + e.name + ", " + who.name}
+        >
+          {last ? (
             <>
-              В прошлый раз <b>{e.previous}</b>
+              В прошлый раз <b>{format(last.weight, last.reps)}</b>
               <span>
                 {" "}
                 ·{" "}
-                {e.previousDate
-                  ? labelDate(e.previousDate, {
+                {last.date
+                  ? labelDate(last.date, {
                       day: "numeric",
                       month: "short",
+                      year: "numeric",
                     })
                   : "исходное значение"}
               </span>
@@ -501,7 +538,7 @@ function Trainer({ initial }: { initial: Store }) {
           ) : (
             "Первый результат — заполните поля"
           )}
-        </p>
+        </button>
         {p.status === "done" || p.status === "absent" ? (
           <div className="status-line">
             <CheckCircle2 size={17} />
@@ -554,33 +591,12 @@ function Trainer({ initial }: { initial: Store }) {
             <button
               className={"btn full " + (e.done ? "soft" : "primary")}
               disabled={!e.weight.trim() || !e.reps.trim()}
-              onClick={() =>
-                changeAppointment((a) => {
-                  const participant = a.participants.find(
-                    (x) => x.personId === p.personId,
-                  )!;
-                  participant.entries[index].done = true;
-                  const nextIndex = participant.entries.findIndex(
-                    (x, i) => i > index && !x.done,
-                  );
-                  participant.opened =
-                    nextIndex < 0
-                      ? participant.entries.findIndex((x) => !x.done)
-                      : nextIndex;
-                  if (
-                    a.mode === "shared" &&
-                    a.participants
-                      .filter((x) => x.status === "active")
-                      .every((x) => x.entries[index]?.done)
-                  )
-                    a.sharedOpened = a.participants[0].entries.findIndex(
-                      (_, i) =>
-                        a.participants.some(
-                          (p) => p.status === "active" && !p.entries[i]?.done,
-                        ),
-                    );
-                })
-              }
+              onClick={() => {
+                if (document.activeElement instanceof HTMLElement)
+                  document.activeElement.blur();
+                scrollAfterConfirm.current = true;
+                changeAppointment((a) => confirmEntry(a, p.personId, index));
+              }}
             >
               <Check size={18} />
               {e.done ? "Результат подтверждён" : "Готово"}
@@ -602,7 +618,18 @@ function Trainer({ initial }: { initial: Store }) {
     });
   }
   function savePicker() {
-    if (modal.addWorkout)
+    if (route.page === "prepare") {
+      const ids = activeParticipant!.entries.map((e) => e.id);
+      mutate((next) =>
+        prepareExercises(
+          next,
+          current!.id,
+          modal.replace
+            ? ids.map((id) => (id === modal.replace ? modal.selected[0] : id))
+            : [...ids, ...modal.selected],
+        ),
+      );
+    } else if (modal.addWorkout)
       mutate((next) => addWorkoutExercises(next, current!.id, modal.selected));
     else if (modal.workout !== undefined) {
       changeAppointment((a) => {
@@ -718,7 +745,7 @@ function Trainer({ initial }: { initial: Store }) {
         </div>
         {a.status !== "cancelled" && (
           <button
-            className={"btn full " + (active ? "primary" : "soft")}
+            className={"btn full " + (a.status === "done" ? "soft" : "primary")}
             onClick={() =>
               a.status === "done"
                 ? go({ page: "summary", appointment: a.id })
@@ -732,6 +759,16 @@ function Trainer({ initial }: { initial: Store }) {
                 ? "Итоги занятия"
                 : "Начать тренировку"}
             <ArrowRight size={17} />
+          </button>
+        )}
+        {a.status === "planned" && (
+          <button
+            className="btn outline full prepare-action"
+            onClick={() => go({ page: "prepare", appointment: a.id })}
+          >
+            {a.participants.some((p) => p.entries.length)
+              ? "Изменить упражнения"
+              : "Подготовить"}
           </button>
         )}
       </article>
@@ -1153,6 +1190,25 @@ function Trainer({ initial }: { initial: Store }) {
                           <b>
                             {r.done ? format(r.weight, r.reps) : "Пропущено"}
                           </b>
+                          {r.done && (
+                            <button
+                              className="text correct-action"
+                              onClick={() =>
+                                setModal({
+                                  type: "correct-result",
+                                  person: person.id,
+                                  session: s.id,
+                                  index: i,
+                                  name: r.name,
+                                  date: s.date,
+                                  weight: r.weight,
+                                  reps: r.reps,
+                                })
+                              }
+                            >
+                              Исправить
+                            </button>
+                          )}
                         </div>
                       ))}
                     </details>
@@ -1463,7 +1519,8 @@ function Trainer({ initial }: { initial: Store }) {
               return (
                 <article
                   className={"workout-item " + (opened ? "opened" : "")}
-                  key={index}
+                  key={e.id}
+                  data-workout-index={index}
                 >
                   <button
                     className="exercise-heading"
@@ -1529,7 +1586,7 @@ function Trainer({ initial }: { initial: Store }) {
                 </article>
               );
             })}
-            <div className="sticky-action">
+            <div className="sticky-action workout-finish">
               <button
                 className="btn primary full"
                 disabled={activeParticipant.status !== "active"}
@@ -1552,6 +1609,160 @@ function Trainer({ initial }: { initial: Store }) {
             </div>
           </>
         )}
+        {route.page === "prepare" &&
+          current?.status === "planned" &&
+          activeParticipant && (
+            <>
+              {head(
+                "Подготовка занятия",
+                labelDate(current.date) +
+                  " · " +
+                  (current.time || "Без времени"),
+                { page: "today" },
+              )}
+              {current.participants.length === 2 && (
+                <>
+                  <div className="tabs">
+                    {["separate", "shared"].map((mode) => (
+                      <button
+                        key={mode}
+                        className={current.mode === mode ? "selected" : ""}
+                        onClick={() => {
+                          if (mode === current.mode) return;
+                          if (
+                            mode === "shared" &&
+                            current.participants.some(
+                              (p, i) =>
+                                i !== current.selected && p.entries.length,
+                            )
+                          )
+                            setModal({
+                              type: "prepare-change",
+                              action: "mode",
+                              value: mode,
+                            });
+                          else
+                            mutate((next) =>
+                              prepareMode(
+                                next,
+                                current.id,
+                                mode as Appointment["mode"],
+                              ),
+                            );
+                        }}
+                      >
+                        {mode === "shared"
+                          ? "Общие упражнения"
+                          : "Свои упражнения"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="participant-tabs">
+                    {current.participants.map((p, i) => (
+                      <button
+                        key={p.personId}
+                        className={current.selected === i ? "selected" : ""}
+                        onClick={() =>
+                          changeAppointment((a) => {
+                            a.selected = i;
+                          })
+                        }
+                      >
+                        {personById(p.personId).name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              <h2>{personById(activeParticipant.personId).name}</h2>
+              <p className="muted">{activeParticipant.dayName}</p>
+              {personById(activeParticipant.personId)
+                .programs.filter((p) => p.active)
+                .flatMap((pg) =>
+                  pg.days.map((d) => (
+                    <button
+                      className="btn outline full prepare-action"
+                      key={d.id}
+                      onClick={() => {
+                        if (activeParticipant.entries.length)
+                          setModal({
+                            type: "prepare-change",
+                            action: "day",
+                            value: d.id,
+                          });
+                        else
+                          mutate((next) => prepareDay(next, current.id, d.id));
+                      }}
+                    >
+                      День программы · {d.name}
+                    </button>
+                  )),
+                )}
+              <Preparation
+                participant={activeParticipant}
+                exercises={store.exercises}
+                onChange={(ids) =>
+                  mutate((next) => prepareExercises(next, current.id, ids))
+                }
+                onReplace={(id) => openPicker(id)}
+                onAdd={() => openPicker()}
+                onRemove={(id) => {
+                  const before = structuredClone(current);
+                  mutate((next) =>
+                    prepareExercises(
+                      next,
+                      current.id,
+                      activeParticipant.entries
+                        .filter((e) => e.id !== id)
+                        .map((e) => e.id),
+                    ),
+                  );
+                  setUndo(() => (next: Store) => {
+                    const a = next.appointments.find((a) => a.id === before.id);
+                    if (!a || a.status !== "planned" || a.mode !== before.mode)
+                      return;
+                    const sharedId =
+                      a.participants[0].entries[a.sharedOpened]?.id;
+                    const originals =
+                      before.mode === "shared"
+                        ? before.participants
+                        : [before.participants[before.selected]];
+                    originals.forEach((original) => {
+                      const p = a.participants.find(
+                        (p) => p.personId === original.personId,
+                      );
+                      const index = original.entries.findIndex(
+                        (e) => e.id === id,
+                      );
+                      if (!p || index < 0 || p.entries.some((e) => e.id === id))
+                        return;
+                      const openedId = p.entries[p.opened]?.id;
+                      p.entries.splice(
+                        Math.min(index, p.entries.length),
+                        0,
+                        original.entries[index],
+                      );
+                      if (openedId)
+                        p.opened = p.entries.findIndex(
+                          (e) => e.id === openedId,
+                        );
+                    });
+                    if (sharedId)
+                      a.sharedOpened = a.participants[0].entries.findIndex(
+                        (e) => e.id === sharedId,
+                      );
+                  });
+                  flash("Упражнение убрано");
+                }}
+              />
+              <button
+                className="btn soft full"
+                onClick={() => go({ page: "today" })}
+              >
+                К расписанию
+              </button>
+            </>
+          )}
         {route.page === "summary" && current && (
           <div className="completion-screen">
             <div className="success-symbol">
@@ -1707,7 +1918,7 @@ function Trainer({ initial }: { initial: Store }) {
           </>
         )}
       </main>
-      {!["workout", "summary", "day"].includes(route.page) && (
+      {!["workout", "summary", "day", "prepare"].includes(route.page) && (
         <nav className="bottom-nav" aria-label="Основная навигация">
           {[
             ["today", "Сегодня", CalendarDays],
@@ -1931,6 +2142,35 @@ function Trainer({ initial }: { initial: Store }) {
                   </button>
                 </>
               )}
+              {modal.type === "prepare-change" && (
+                <>
+                  <h2>Заменить список упражнений?</h2>
+                  <p className="muted">
+                    {modal.action === "mode"
+                      ? "Для второго участника будет использован список выбранного человека. Его программа не изменится."
+                      : "Текущий список заменится упражнениями выбранного дня. Программа не изменится."}
+                  </p>
+                  <button
+                    className="btn primary full"
+                    onClick={() => {
+                      mutate((next) => {
+                        if (modal.action === "mode")
+                          prepareMode(next, current!.id, "shared");
+                        else prepareDay(next, current!.id, modal.value);
+                      });
+                      setModal(null);
+                    }}
+                  >
+                    Заменить список
+                  </button>
+                  <button
+                    className="btn soft full"
+                    onClick={() => setModal(null)}
+                  >
+                    Оставить текущий
+                  </button>
+                </>
+              )}
               {modal.type === "choose-workout-day" && (
                 <>
                   <h2>День программы</h2>
@@ -2038,7 +2278,9 @@ function Trainer({ initial }: { initial: Store }) {
                         <h3 className="group-title">{s}</h3>
                         {items.map((e) => {
                           const existing =
-                            modal.workout !== undefined || modal.addWorkout
+                            route.page === "prepare" ||
+                            modal.workout !== undefined ||
+                            modal.addWorkout
                               ? activeParticipant!.entries.some(
                                   (x) => x.id === e.id,
                                 )
@@ -2643,6 +2885,62 @@ function Trainer({ initial }: { initial: Store }) {
                   >
                     <Trash2 size={19} />
                     Убрать из этого дня
+                  </button>
+                </>
+              )}
+              {modal.type === "correct-result" && (
+                <>
+                  <h2>{modal.name}</h2>
+                  <p className="muted">
+                    {labelDate(modal.date, {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </p>
+                  <div className="inputs">
+                    <label>
+                      Вес / нагрузка
+                      <input
+                        aria-label="Исправленный вес"
+                        value={modal.weight}
+                        onChange={(e) =>
+                          setModal({ ...modal, weight: e.target.value })
+                        }
+                      />
+                    </label>
+                    <span>×</span>
+                    <label>
+                      Повторы
+                      <input
+                        aria-label="Исправленные повторы"
+                        inputMode="numeric"
+                        value={modal.reps}
+                        onChange={(e) =>
+                          setModal({ ...modal, reps: e.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <button
+                    className="btn primary full"
+                    disabled={!modal.weight.trim() || !modal.reps.trim()}
+                    onClick={() => {
+                      mutate((next) =>
+                        correctResult(
+                          next,
+                          modal.person,
+                          modal.session,
+                          modal.index,
+                          modal.weight,
+                          modal.reps,
+                        ),
+                      );
+                      setModal(null);
+                      flash("Результат исправлен");
+                    }}
+                  >
+                    Сохранить
                   </button>
                 </>
               )}

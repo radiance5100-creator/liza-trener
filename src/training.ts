@@ -282,6 +282,143 @@ export function startAppointment(store: Store, id: string): string {
   );
   return a.id;
 }
+export function confirmEntry(a: Appointment, personId: string, index: number) {
+  const p = a.participants.find((p) => p.personId === personId);
+  const e = p?.entries[index];
+  if (
+    a.status !== "active" ||
+    p?.status !== "active" ||
+    !e ||
+    !e.weight.trim() ||
+    !e.reps.trim()
+  )
+    return;
+  e.done = true;
+  const targets =
+    a.mode === "shared"
+      ? a.participants.filter((p) => p.status === "active")
+      : [p];
+  if (!targets.every((p) => p.entries[index]?.done)) return;
+  const incomplete = (i: number) => targets.some((p) => !p.entries[i]?.done);
+  let next = p.entries.findIndex((_, i) => i > index && incomplete(i));
+  if (next < 0) next = p.entries.findIndex((_, i) => incomplete(i));
+  if (a.mode === "shared") a.sharedOpened = next;
+  else p.opened = next;
+}
+
+// Prepared snapshots deliberately contain no planned load or repetitions.
+export function prepareExercises(
+  store: Store,
+  appointmentId: string,
+  ids: string[],
+) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "planned") return;
+  const targets =
+    a.mode === "shared" ? a.participants : [a.participants[a.selected]];
+  const unique = [...new Set(ids)].filter((id) =>
+    store.exercises.some((e) => e.id === id),
+  );
+  const sharedId = a.participants[0].entries[a.sharedOpened]?.id;
+  targets.forEach((p) => {
+    const openedId = p.entries[p.opened]?.id;
+    p.entries = unique.map((id) => ({
+      ...entry(store, p.personId, id),
+      weight: "",
+      reps: "",
+      previous: "",
+      previousDate: "",
+    }));
+    p.opened = openedId ? p.entries.findIndex((e) => e.id === openedId) : 0;
+  });
+  if (a.mode === "shared")
+    a.sharedOpened = sharedId ? unique.indexOf(sharedId) : 0;
+}
+
+export function correctResult(
+  store: Store,
+  personId: string,
+  sessionId: string,
+  index: number,
+  weight: string,
+  reps: string,
+) {
+  const s = store.sessions.find(
+    (s) => s.id === sessionId && s.personId === personId,
+  );
+  const r = s?.results[index];
+  if (!s || !r?.done || !weight.trim() || !reps.trim())
+    throw new Error("Нельзя исправить этот результат");
+  const person = store.people.find((p) => p.id === personId)!;
+  person.records.forEach((record) => {
+    if (
+      record.id === r.id &&
+      record.date === s.date &&
+      record.weight === r.weight &&
+      record.reps === r.reps
+    ) {
+      record.weight = weight.trim();
+      record.reps = reps.trim();
+    }
+  });
+  const a = store.appointments.find((a) => a.id + ":" + personId === sessionId);
+  const snapshot = a?.participants.find(
+    (p) => p.personId === personId && p.status === "done",
+  )?.entries[index];
+  if (snapshot?.id === r.id) {
+    snapshot.weight = weight.trim();
+    snapshot.reps = reps.trim();
+  }
+  r.weight = weight.trim();
+  r.reps = reps.trim();
+}
+
+export function prepareDay(store: Store, appointmentId: string, dayId: string) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "planned") return;
+  const source = a.participants[a.selected];
+  const chosen = participant(store, source.personId, dayId);
+  if (chosen.dayId !== dayId) return;
+  a.participants[a.selected] = chosen;
+  if (a.mode === "shared")
+    a.participants.forEach((p, i) => {
+      if (i !== a.selected) {
+        p.programId = undefined;
+        p.dayId = undefined;
+        p.dayName = chosen.dayName + " · совместная";
+      }
+    });
+  prepareExercises(
+    store,
+    a.id,
+    chosen.entries.map((e) => e.id),
+  );
+}
+
+export function prepareMode(
+  store: Store,
+  appointmentId: string,
+  mode: Appointment["mode"],
+) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "planned" || a.mode === mode) return;
+  a.mode = mode;
+  if (mode === "shared") {
+    const source = a.participants[a.selected];
+    a.participants.forEach((p, i) => {
+      if (i !== a.selected) {
+        p.programId = undefined;
+        p.dayId = undefined;
+        p.dayName = source.dayName + " · совместная";
+      }
+    });
+    prepareExercises(
+      store,
+      a.id,
+      source.entries.map((e) => e.id),
+    );
+  }
+}
 export function finish(
   store: Store,
   appointmentId: string,

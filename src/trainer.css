@@ -1884,3 +1884,84 @@ p {
     padding-top: env(safe-area-inset-top);
   }
 }
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.photo-grid button {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f2eee6;
+  aspect-ratio: 3 / 4;
+}
+.photo-grid img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+.previous-history {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 8px 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+.prepare-action {
+  margin-top: 10px;
+}
+.preparation-list {
+  margin-top: 20px;
+}
+.preparation-row {
+  gap: 6px;
+}
+.preparation-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.preparation-name strong {
+  display: block;
+}
+.preparation-name .text {
+  min-height: 44px;
+}
+.preparation-row .mini-photo {
+  display: grid;
+  flex-shrink: 0;
+  width: 42px;
+  height: 56px;
+}
+.preparation-row strong {
+  font-size: 14px;
+}
+.preparation-row .mini-photo img {
+  object-fit: contain;
+}
+.workout-item {
+  scroll-margin-top: 85px;
+}
+.correct-action {
+  min-height: 44px;
+}
+.history-result:has(.correct-action) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+}
+.history-result:has(.correct-action) b {
+  max-width: none;
+}
+.correct-action {
+  grid-column: 2;
+}

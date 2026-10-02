@@ -1,5 +1,30 @@
 import { useEffect, useRef } from "react";
 
+export function PhotoGrid({
+  images,
+  name,
+  onOpen,
+}: {
+  images: string[];
+  name: string;
+  onOpen: (index: number) => void;
+}) {
+  if (!images.length) return null;
+  return (
+    <div className="photo-grid">
+      {images.slice(0, 2).map((image, i) => (
+        <button
+          key={i}
+          aria-label={`Увеличить скриншот ${i + 1}: ${name}`}
+          onClick={() => onOpen(i)}
+        >
+          <img src={image} alt={`${name}, скриншот ${i + 1}`} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Gallery({
   images,
   name,

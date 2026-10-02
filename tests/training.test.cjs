@@ -11,6 +11,46 @@ function load(name) {
   return exports;
 }
 const t=load('training');
+
+test('confirmation advances forward, wraps skipped rows, and waits for active shared participants',()=>{
+ const s=t.emptyStore(), ids=s.exercises.slice(0,3).map(e=>e.id), a=t.appointment(s,['self'],'10:00');
+ a.status='active';const p=a.participants[0];p.status='active';p.entries=ids.map(id=>({...t.entry(s,'self',id),weight:'0',reps:'8'}));
+ t.confirmEntry(a,'self',1);assert.equal(p.opened,2);t.confirmEntry(a,'self',2);assert.equal(p.opened,0);t.confirmEntry(a,'self',0);assert.equal(p.opened,-1);
+ const q=structuredClone(p);q.personId='guest';q.entries.forEach(e=>e.done=false);p.entries.forEach(e=>e.done=false);a.participants.push(q);a.mode='shared';a.sharedOpened=1;
+ t.confirmEntry(a,'self',1);assert.equal(a.sharedOpened,1);t.confirmEntry(a,'guest',1);assert.equal(a.sharedOpened,2);
+ q.status='done';t.confirmEntry(a,'self',2);assert.equal(a.sharedOpened,0);t.confirmEntry(a,'self',0);assert.equal(a.sharedOpened,-1);
+});
+
+test('preparation is a pending independent snapshot, preserves open identity and refreshes results only on start',()=>{
+ const s=fixture(), a=t.appointment(s,['self','c1'],'10:00');s.appointments.push(a);
+ const original=JSON.stringify(s.people.map(p=>p.programs));t.prepareDay(s,a.id,'d1');
+ assert.equal(a.status,'planned');assert.equal(a.participants[0].status,'pending');assert.equal(a.participants[0].entries[0].weight,'');
+ a.participants[0].opened=0;t.prepareExercises(s,a.id,['e2','e1']);assert.equal(a.participants[0].opened,1);
+ t.prepareMode(s,a.id,'shared');assert.equal(a.participants[1].programId,undefined);assert.deepEqual(a.participants[1].entries.map(e=>e.id),['e2','e1']);
+ assert.equal(JSON.stringify(s.people.map(p=>p.programs)),original);
+ const restored=t.migrate(JSON.parse(JSON.stringify(s)));t.startAppointment(restored,a.id);
+ assert.equal(restored.appointments[0].participants[0].entries[1].weight,'22');assert.equal(restored.appointments[0].participants[1].entries[1].weight,'5');
+ assert.ok(restored.appointments[0].participants.every(p=>p.entries.every(e=>!e.done)));
+});
+
+test('correction updates migrated duplicate records, rejects ownership and skips, and keeps active drafts unchanged',()=>{
+ const s=fixture(), session=s.sessions[0], r=session.results[0];s.people[0].records.push({id:r.id,name:r.name,date:session.date,weight:r.weight,reps:r.reps});
+ const a=t.appointment(s,['self'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);const draft=JSON.stringify(a);
+ t.correctResult(s,'self',session.id,0,'резинка','12');assert.equal(JSON.stringify(a),draft);
+ assert.deepEqual(t.resultHistory(s,'self','e1').filter(r=>r.date===session.date).map(r=>r.weight),['резинка']);
+ assert.equal(t.entry(s,'self','e1').weight,'резинка');assert.throws(()=>t.correctResult(s,'c1',session.id,0,'0','9'));
+ session.results.push({...r,id:'e2',done:false});assert.throws(()=>t.correctResult(s,'self',session.id,1,'0','9'));
+ assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);
+});
+
+test('correction syncs completed snapshot without changing another same-day session or advancing cycle',()=>{
+ const s=fixture(), a=t.appointment(s,['self'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);t.confirmEntry(a,'self',0);t.finish(s,a.id,'self');
+ const b=t.appointment(s,['self'],'12:00');b.participants[0]=t.participant(s,'self','d1');s.appointments.push(b);t.startAppointment(s,b.id);t.confirmEntry(b,'self',0);t.finish(s,b.id,'self');
+ const count=s.sessions.length, next=s.people[0].programs[0].next, second=JSON.stringify(b);
+ t.correctResult(s,'self',a.id+':self',0,'25','9');assert.equal(a.participants[0].entries[0].weight,'25');assert.equal(JSON.stringify(b),second);
+ assert.equal(s.sessions.length,count);assert.equal(s.people[0].programs[0].next,next);
+ assert.equal(t.resultHistory(s,'self','e1').filter(r=>r.date===a.date).length,2);
+});
 const legacy=()=>({version:1,exercises:[{id:'e1',name:'Тяга',group:'Спина',kind:'База',weight:'20',reps:'8',note:'Старая заметка',filmed:false,images:['data:image/png;base64,aGVsbG8=',null],history:[{weight:'18',reps:'10',date:'2026-09-01'}]},{id:'e2',name:'Присед',group:'Ноги',kind:'База',weight:'0',reps:'12',note:'',filmed:false,images:[null,null],history:[]}],techniques:{e1:{flagged:true,comment:''}},clients:[{id:'c1',name:'Клиент',contact:'контакт',note:'заметка',results:[{exerciseId:'e1',name:'Тяга',weight:'5',reps:'12'}],techniques:{}}],plans:[{id:'d1',name:'А',exerciseIds:['e1','e2']},{id:'d2',name:'Б',exerciseIds:['e2']},{id:'cd',name:'Клиентский день',exerciseIds:['e1'],clientId:'c1'}],sessions:[{id:'s1',planName:'А',date:'2026-09-15T10:00:00.000Z',results:[{exerciseId:'e1',name:'Тяга',weight:'22',reps:'8'}]}],draft:{planName:'Б',results:[{exerciseId:'e2',name:'Присед',weight:'0',reps:'14'}]}});
 function fixture(){const s=t.migrate(legacy());s.appointments=[];return s;}
 test('migration preserves ownership, photos, ordered days, flags and unconfirmed draft without invented time',()=>{
