@@ -177,7 +177,7 @@ export function appointment(
     id: uid(),
     date: iso(),
     time,
-    duration: 60,
+    duration: null,
     mode: "separate",
     participants: ids.map((id) => participant(store, id)),
     status: "planned",
@@ -185,10 +185,73 @@ export function appointment(
     sharedOpened: 0,
   };
 }
+export function oneOffParticipant(personId: string): Participant {
+  return {
+    personId,
+    dayName: "Разовая тренировка",
+    entries: [],
+    opened: 0,
+    status: "pending",
+    scroll: 0,
+  };
+}
+export function addWorkoutExercises(
+  store: Store,
+  appointmentId: string,
+  ids: string[],
+) {
+  const a = store.appointments.find((a) => a.id === appointmentId)!;
+  const targets =
+    a.mode === "shared" ? a.participants : [a.participants[a.selected]];
+  if (a.status !== "active" || targets.some((p) => p.status !== "active"))
+    return;
+  const added = [...new Set(ids)].filter(
+    (id) =>
+      store.exercises.some((e) => e.id === id) &&
+      !targets.some((p) => p.entries.some((e) => e.id === id)),
+  );
+  const first = targets[0].entries.length;
+  targets.forEach((p) => {
+    p.entries.push(...added.map((id) => entry(store, p.personId, id)));
+    if (added.length) p.opened = first;
+  });
+  if (added.length && a.mode === "shared") a.sharedOpened = first;
+}
+export function removePerson(store: Store, id: string) {
+  if (id === "self") throw new Error("Карточку «Я» нельзя удалить");
+  const person = store.people.find((p) => p.id === id);
+  if (!person) return;
+  store.people = store.people.filter((p) => p.id !== id);
+  store.sessions = store.sessions.filter((s) => s.personId !== id);
+  store.appointments = store.appointments.filter((a) => {
+    if (!a.participants.some((p) => p.personId === id)) return true;
+    const selectedId = a.participants[a.selected]?.personId;
+    const wasShared = a.mode === "shared";
+    a.participants = a.participants.filter((p) => p.personId !== id);
+    a.selected = Math.max(
+      0,
+      a.participants.findIndex((p) => p.personId === selectedId),
+    );
+    if (a.participants.length === 1) {
+      a.mode = "separate";
+      if (wasShared) a.participants[0].opened = a.sharedOpened;
+    }
+    if (
+      a.status === "active" &&
+      a.participants.every((p) => p.status === "done" || p.status === "absent")
+    )
+      a.status = "done";
+    return a.participants.length > 0;
+  });
+}
 export function startAppointment(store: Store, id: string): string {
   const a = store.appointments.find((a) => a.id === id)!;
   if (a.status === "active") {
-    if (a.participants[a.selected]?.status !== "active") a.selected = Math.max(0, a.participants.findIndex(p => p.status === "active"));
+    if (a.participants[a.selected]?.status !== "active")
+      a.selected = Math.max(
+        0,
+        a.participants.findIndex((p) => p.status === "active"),
+      );
     return a.id;
   }
   if (a.status !== "planned") throw new Error("Это занятие уже закрыто");
@@ -212,8 +275,6 @@ export function startAppointment(store: Store, id: string): string {
       p.status = "active";
     }
   });
-  if (!a.participants.some((p) => p.status === "active" && p.entries.length))
-    throw new Error("Добавьте упражнения в день программы");
   a.status = "active";
   a.selected = Math.max(
     0,
@@ -304,15 +365,13 @@ export function migrate(value: unknown): Store {
   );
   store.people[0].records = old.exercises.flatMap((e) => [
     { id: e.id, name: e.name, weight: e.weight, reps: e.reps, date: "" },
-    ...[...e.history]
-      .reverse()
-      .map((h) => ({
-        id: e.id,
-        name: e.name,
-        weight: h.weight,
-        reps: h.reps,
-        date: h.date.slice(0, 10),
-      })),
+    ...[...e.history].reverse().map((h) => ({
+      id: e.id,
+      name: e.name,
+      weight: h.weight,
+      reps: h.reps,
+      date: h.date.slice(0, 10),
+    })),
   ]);
   // Preserve references even when an old backup no longer contains a library item.
   const ensure = (id: string, name = "Упражнение из архива") => {

@@ -1,4 +1,90 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+.calendar {
+  margin: 0 -14px 18px;
+}
+.calendar-title {
+  padding: 0 8px 8px;
+  text-transform: capitalize;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.calendar-weekday {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 8px 0;
+}
+.calendar-day {
+  min-height: 64px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: transparent;
+  padding: 5px 2px;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 3px;
+  border-radius: 9px;
+}
+.calendar-day b {
+  font-size: 13px;
+  line-height: 20px;
+}
+.calendar-day.outside {
+  opacity: 0.45;
+}
+.calendar-day.is-today b {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.calendar-day.selected {
+  background: var(--navy);
+  color: white;
+  border-color: var(--navy);
+}
+.calendar-event {
+  background: #ded8cc;
+  color: var(--navy);
+  border-radius: 4px;
+  padding: 1px 3px;
+  font-size: 9px;
+  line-height: 13px;
+  font-weight: 800;
+}
+.calendar-event.active {
+  background: var(--orange);
+}
+.calendar-event.done {
+  background: var(--clay);
+  color: white;
+}
+.calendar-today {
+  display: flex;
+  margin: 6px auto 0;
+  min-height: 44px;
+  align-items: center;
+}
+.workout-tools {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.completion-screen {
+  min-height: 75dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+}
+.completion-screen .success-symbol {
+  margin: 0;
+}
+.danger {
+  color: var(--clay);
+}
 :root {
   font-family:
     Manrope,

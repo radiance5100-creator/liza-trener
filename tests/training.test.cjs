@@ -65,3 +65,48 @@ test('same-day repeated results stay distinct and resume selects unfinished part
  const s=fixture(),a=t.appointment(s,['self','c1'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);a.participants[1].entries[0].weight='5';a.participants[1].entries[0].reps='12';a.participants[1].entries[0].done=true;t.finish(s,a.id,'c1');a.selected=1;t.startAppointment(s,a.id);assert.equal(a.selected,0);
  const b=t.appointment(s,['c1'],'12:00');s.appointments.push(b);t.startAppointment(s,b.id);b.participants[0].entries[0].done=true;t.finish(s,b.id,'c1');assert.equal(t.resultHistory(s,'c1','e1').filter(r=>r.date===t.iso()).length,2);
 });
+
+test('schedule and one-off start without a program, additions persist and do not advance program cycle',()=>{
+  const s=fixture(), a=t.appointment(s,['c1'],'09:00');
+  a.participants=[t.oneOffParticipant('c1')];s.appointments.push(a);
+  assert.equal(a.duration,null);assert.equal(t.startAppointment(s,a.id),a.id);
+  assert.equal(a.participants[0].entries.length,0);
+  t.addWorkoutExercises(s,a.id,['e1','e1','missing']);
+  const r=a.participants[0].entries[0];r.weight='резинка';r.reps='10';r.done=true;
+  t.addWorkoutExercises(s,a.id,['e1','e2']);
+  assert.deepEqual(a.participants[0].entries.map(e=>e.id),['e1','e2']);
+  assert.equal(r.done,true);assert.equal(a.participants[0].opened,1);
+  assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);
+  t.finish(s,a.id,'c1');
+  assert.equal(s.people[1].programs[0].next,0);
+  assert.equal(s.sessions.at(-1).dayName,'Разовая тренировка');
+  assert.equal(t.entry(s,'c1','e1').weight,'резинка');
+  assert.equal(s.sessions.at(-1).results[1].done,false);
+});
+test('shared additions keep independent past results and cannot modify a completed participant',()=>{
+  const s=fixture(),a=t.appointment(s,['self','c1'],'10:00');
+  a.mode='shared';a.participants=['self','c1'].map(t.oneOffParticipant);s.appointments.push(a);t.startAppointment(s,a.id);
+  t.addWorkoutExercises(s,a.id,['e1']);
+  assert.equal(a.participants[0].entries[0].weight,'22');assert.equal(a.participants[1].entries[0].weight,'5');
+  a.participants[0].entries[0].done=true;
+  assert.equal(a.participants[1].entries[0].done,false);
+  t.finish(s,a.id,'self');t.addWorkoutExercises(s,a.id,['e2']);
+  assert.equal(a.participants[0].entries.length,1);assert.equal(a.participants[1].entries.length,1);
+});
+test('deleting a client preserves the paired participant, personal history and independent drafts',()=>{
+  const s=fixture(),a=t.appointment(s,['self','c1'],'10:00'),b=t.appointment(s,['c1'],'12:00');
+  a.mode='shared';a.participants[1].entries=a.participants[0].entries.map(e=>t.entry(s,'c1',e.id));
+  s.appointments.push(a,b);t.startAppointment(s,a.id);a.sharedOpened=1;a.selected=1;
+  a.participants[0].entries[0].weight='42';a.participants[0].entries[0].done=true;
+  t.removePerson(s,'c1');
+  assert.equal(s.people.length,1);assert.equal(s.appointments.length,1);assert.equal(a.selected,0);assert.equal(a.mode,'separate');assert.equal(a.participants[0].opened,1);
+  assert.equal(a.participants[0].entries[0].weight,'42');assert.equal(s.sessions[0].personId,'self');
+  assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);assert.throws(()=>t.removePerson(s,'self'));
+});
+test('removing a mistaken active appointment neither writes history nor advances the program',()=>{
+  const s=fixture(),a=t.appointment(s,['self'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);
+  a.participants[0].entries[0].done=true;
+  s.appointments=s.appointments.filter(x=>x.id!==a.id);
+  assert.equal(s.sessions.length,1);assert.equal(s.people[0].programs[0].next,0);
+  const b=t.appointment(s,['self'],'11:00');s.appointments.push(b);assert.equal(t.startAppointment(s,b.id),b.id);
+});
