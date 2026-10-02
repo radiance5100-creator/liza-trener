@@ -1039,54 +1039,6 @@ function Trainer({ initial }: { initial: Store }) {
                   ))}
                 <section className="surface">
                   <div className="section-title">
-                    <h2>Посещаемость</h2>
-                    <CalendarDays size={18} />
-                  </div>
-                <div className="month-switch">
-                  <button
-                    className="icon"
-                    aria-label="Предыдущий месяц"
-                    onClick={() =>
-                      setMonth(dayOffset(month + "-01", -1).slice(0, 7))
-                    }
-                  >
-                    <ChevronLeft size={18} />
-                  </button>
-                  <strong>
-                    {labelDate(month + "-01", {
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </strong>
-                  <button
-                    className="icon"
-                    aria-label="Следующий месяц"
-                    onClick={() => {
-                      const d = new Date(month + "-01T12:00:00");
-                      d.setMonth(d.getMonth() + 1);
-                      setMonth(iso(d).slice(0, 7));
-                    }}
-                  >
-                    <ChevronRight size={18} />
-                  </button>
-                </div>
-                  <div className="stats">
-                    <div>
-                      <b>
-                        {
-                          store.sessions.filter(
-                            (s) =>
-                              s.personId === person.id &&
-                              s.date.startsWith(month),
-                          ).length
-                        }
-                      </b>
-                      <small>Проведено занятий</small>
-                    </div>
-                  </div>
-                </section>
-                <section className="surface">
-                  <div className="section-title">
                     <h2>Результаты</h2>
                     <Dumbbell size={18} />
                   </div>
@@ -1097,6 +1049,20 @@ function Trainer({ initial }: { initial: Store }) {
                     onHistory={(exercise) => setModal({ type: "history", person: person.id, exercise })}
                   />
                 </section>
+                <div className="attendance-line" aria-label="Посещаемость">
+                  <button className="icon" aria-label="Предыдущий месяц посещаемости"
+                    onClick={() => setMonth(dayOffset(month + "-01", -1).slice(0, 7))}>
+                    <ChevronLeft size={16} />
+                  </button>
+                  <div>
+                    <span>{labelDate(month + "-01", { month: "long", year: "numeric" })}</span>
+                    <span>{quantity(store.sessions.filter((s) => s.personId === person.id && s.date.startsWith(month)).length, ["занятие", "занятия", "занятий"])} проведено</span>
+                  </div>
+                  <button className="icon" aria-label="Следующий месяц посещаемости"
+                    onClick={() => { const d = new Date(month + "-01T12:00:00"); d.setMonth(d.getMonth() + 1); setMonth(iso(d).slice(0, 7)); }}>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
               </>
             )}
             {personTab === "Программы" && (
