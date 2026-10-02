@@ -202,6 +202,13 @@ function Trainer({ initial }: { initial: Store }) {
   const [group, setGroup] = useState("Все");
   const [modal, setModal] = useState<any>(null);
   const [toast, setToast] = useState("");
+  const [toastCountdownKey, setToastCountdownKey] = useState(0);
+  const [toastSeconds, setToastSeconds] = useState(3);
+  useEffect(() => {
+    if (!toastCountdownKey) return;
+    const countdown = setInterval(() => setToastSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => clearInterval(countdown);
+  }, [toastCountdownKey]);
   const [undo, setUndo] = useState<((next: Store) => void) | null>(null);
   const drag = useRef<{ from: number; to: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -331,11 +338,15 @@ function Trainer({ initial }: { initial: Store }) {
     if (!["Занятие удалено", "Упражнение убрано"].includes(message))
       setUndo(null);
     setToast(message);
+    const duration = message === "Занятие удалено" ? 3000 : 6000;
+    setToastSeconds(3);
+    setToastCountdownKey((previous) => message === "Занятие удалено" ? previous + 1 : 0);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       setToast("");
       setUndo(null);
-    }, 6000);
+      setToastCountdownKey(0);
+    }, duration);
   }
   function go(next: Route) {
     setRoute(next);
@@ -1881,13 +1892,14 @@ function Trainer({ initial }: { initial: Store }) {
       )}
       {toast && (
         <div className="toast" role="status">
-          {toast}
+          <span>{toast}</span>
+          {toast === "Занятие удалено" && <span className="toast-timer" aria-hidden="true">{toastSeconds}с</span>}
           {undo && (
             <button
               onClick={() => {
                 mutate(undo);
                 setUndo(null);
-                setToast("Действие отменено");
+                flash("Действие отменено");
               }}
             >
               Отменить
@@ -2323,7 +2335,7 @@ function Trainer({ initial }: { initial: Store }) {
                     программы не изменится.
                   </p>
                   <button
-                    className="btn primary full"
+                    className="btn destructive full"
                     onClick={() => deleteAppointment(modal.id)}
                   >
                     Удалить занятие

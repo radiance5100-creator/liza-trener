@@ -1530,28 +1530,47 @@ main {
 .danger {
   color: #a35139;
 }
+.btn.destructive { background: #b33d3d; color: #fff; border-color: #b33d3d; }
 .toast {
   position: fixed;
   z-index: 70;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 100px;
-  max-width: min(430px, calc(100vw - 32px));
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  max-width: min(430px, calc(100vw - 24px));
+  width: max-content;
   background: #2c3b4d;
   color: white;
-  padding: 13px 17px;
-  border-radius: 13px;
-  font-size: 12px;
-  box-shadow: 0 6px 30px #0002;
+  padding: 0 10px;
+  min-height: 44px;
+  border-radius: 11px;
+  font-size: 11px;
+  box-shadow: 0 3px 12px #0002;
   display: flex;
-  gap: 15px;
+  gap: 8px;
   align-items: center;
+  pointer-events: none;
 }
 .toast button {
   color: #ffb162;
   background: none;
   border: 0;
   min-height: 44px;
+  padding: 0 4px;
+  font-size: 11px;
+  pointer-events: auto;
+}
+.toast-timer {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 23px;
+  height: 23px;
+  border: 1px solid #ffffff50;
+  border-radius: 50%;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #ffffffc9;
 }
 .surface .badge {
   margin-bottom: 5px;
