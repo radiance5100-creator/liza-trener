@@ -28,6 +28,7 @@ import { Calendar } from "./Calendar";
 import { ScheduleFields } from "./ScheduleFields";
 import { Gallery, PhotoGrid } from "./Gallery";
 import { Preparation } from "./Preparation";
+import { ProgressTable } from "./ProgressTable";
 import { ExerciseEditor } from "./ExerciseEditor";
 import {
   loadTraining,
@@ -1036,6 +1037,11 @@ function Trainer({ initial }: { initial: Store }) {
                       </button>
                     </div>
                   ))}
+                <section className="surface">
+                  <div className="section-title">
+                    <h2>Посещаемость</h2>
+                    <CalendarDays size={18} />
+                  </div>
                 <div className="month-switch">
                   <button
                     className="icon"
@@ -1064,11 +1070,6 @@ function Trainer({ initial }: { initial: Store }) {
                     <ChevronRight size={18} />
                   </button>
                 </div>
-                <section className="surface">
-                  <div className="section-title">
-                    <h2>Посещаемость</h2>
-                    <CalendarDays size={18} />
-                  </div>
                   <div className="stats">
                     <div>
                       <b>
@@ -1089,56 +1090,12 @@ function Trainer({ initial }: { initial: Store }) {
                     <h2>Результаты</h2>
                     <Dumbbell size={18} />
                   </div>
-                  <p className="muted small-text">
-                    Последний и предыдущий подход
-                  </p>
-                  {!resultHistory(store, person.id).some((r) =>
-                    r.date.startsWith(month),
-                  ) && (
-                    <p className="muted">В этом месяце результатов пока нет.</p>
-                  )}
-                  {[
-                    ...new Set(
-                      resultHistory(store, person.id)
-                        .filter((r) => r.date.startsWith(month))
-                        .reverse()
-                        .map((r) => r.id),
-                    ),
-                  ].map((id) => {
-                    const hs = resultHistory(store, person.id, id).filter(
-                      (r) => !r.date || r.date <= month + "-31",
-                    );
-                    const last = hs.at(-1),
-                      prev = hs.at(-2);
-                    return (
-                      <button
-                        className="progress-row"
-                        key={id}
-                        onClick={() =>
-                          setModal({
-                            type: "history",
-                            person: person.id,
-                            exercise: id,
-                          })
-                        }
-                      >
-                        <span>{ex(id).name}</span>
-                        <span>
-                          <strong>
-                            {last
-                              ? format(last.weight, last.reps)
-                              : "Нет записей"}
-                          </strong>
-                          <small>
-                            {prev
-                              ? "ранее " + format(prev.weight, prev.reps)
-                              : "—"}
-                          </small>
-                        </span>
-                        <ChevronRight size={15} />
-                      </button>
-                    );
-                  })}
+                  <p className="muted small-text">Последние 3 выполнения каждого упражнения</p>
+                  <ProgressTable
+                    store={store}
+                    personId={person.id}
+                    onHistory={(exercise) => setModal({ type: "history", person: person.id, exercise })}
+                  />
                 </section>
               </>
             )}

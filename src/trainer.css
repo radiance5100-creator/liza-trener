@@ -825,36 +825,6 @@ main {
   font-size: 10px;
   color: var(--muted);
 }
-.progress-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  padding: 14px 0;
-  border: 0;
-  background: transparent;
-  width: 100%;
-  border-top: 1px solid #eee8dd;
-  margin-top: 10px;
-}
-.progress-row > span:first-child {
-  font-size: 12px;
-  line-height: 1.45;
-  flex: 1;
-}
-.progress-row > span:nth-child(2) {
-  display: grid;
-  gap: 5px;
-  text-align: right;
-  flex-shrink: 0;
-}
-.progress-row strong {
-  font-size: 14px;
-}
-.progress-row small {
-  font-size: 10px;
-  color: var(--muted);
-}
 .program-card {
   display: block;
   text-align: left;
@@ -1836,11 +1806,6 @@ p {
 .save-error .btn {
   margin: 5px;
 }
-.progress-row > span:nth-child(2) {
-  flex-shrink: 1;
-  max-width: 45%;
-  overflow-wrap: anywhere;
-}
 .history-result b {
   flex-shrink: 1;
   max-width: 45%;
@@ -2088,3 +2053,11 @@ p {
 .schedule-fields .field {
   margin: 10px 3px;
 }
+
+.progress-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.progress-table thead th { padding: 10px 2px; font-size: 10px; font-weight: 500; color: var(--muted); text-align: center; }
+.progress-table tbody th { border-top: 1px solid var(--line); padding: 0; }
+.progress-table button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; padding: 12px 0 6px; border: 0; background: transparent; color: var(--navy); font: inherit; font-size: 13px; text-align: left; }
+.progress-table button span { min-width: 0; overflow-wrap: anywhere; }
+.progress-table button svg { flex-shrink: 0; }
+.progress-table td { padding: 8px 4px 16px; text-align: center; vertical-align: top; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
