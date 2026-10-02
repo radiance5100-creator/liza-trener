@@ -147,19 +147,6 @@
   font-weight: 700;
   color: var(--navy);
 }
-.person-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin: -8px 0 10px;
-}
-.person-actions .text {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 44px;
-  font-size: 12px;
-  color: var(--clay);
-}
 @media (max-width: 350px) {
   .calendar {
     padding: 8px 0;

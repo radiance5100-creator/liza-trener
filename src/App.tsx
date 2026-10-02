@@ -906,19 +906,6 @@ function Trainer({ initial }: { initial: Store }) {
                 <MoreHorizontal size={22} />
               </button>,
             )}
-            {person.id !== "self" && (
-              <div className="person-actions">
-                <button
-                  className="text danger"
-                  onClick={() =>
-                    setModal({ type: "delete-person", id: person.id })
-                  }
-                >
-                  <Trash2 size={16} />
-                  Удалить клиента
-                </button>
-              </div>
-            )}
             <div className="tabs">
               {["Обзор", "Программы", "История"].map((tab) => (
                 <button
