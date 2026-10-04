@@ -33,7 +33,7 @@ export function ScheduleFields({
       .join(" + ");
   const atTime = booked.filter((a) => a.time === draft.time);
   const people = store.people.filter((p) =>
-    p.name
+    !p.archivedAt && p.name
       .toLocaleLowerCase("ru")
       .includes(draft.peopleQuery.toLocaleLowerCase("ru")),
   );

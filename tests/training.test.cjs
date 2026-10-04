@@ -173,15 +173,28 @@ test('shared additions keep independent past results and cannot modify a complet
   t.finish(s,a.id,'self');t.addWorkoutExercises(s,a.id,['e2']);
   assert.equal(a.participants[0].entries.length,1);assert.equal(a.participants[1].entries.length,1);
 });
-test('deleting a client preserves the paired participant, personal history and independent drafts',()=>{
+test('archiving a client preserves the paired participant, personal history and independent drafts',()=>{
   const s=fixture(),a=t.appointment(s,['self','c1'],'10:00'),b=t.appointment(s,['c1'],'12:00');
   a.mode='shared';a.participants[1].entries=a.participants[0].entries.map(e=>t.entry(s,'c1',e.id));
   s.appointments.push(a,b);t.startAppointment(s,a.id);a.sharedOpened=1;a.selected=1;
   a.participants[0].entries[0].weight='42';a.participants[0].entries[0].done=true;
   t.removePerson(s,'c1');
-  assert.equal(s.people.length,1);assert.equal(s.appointments.length,1);assert.equal(a.selected,0);assert.equal(a.mode,'separate');assert.equal(a.participants[0].opened,1);
+  assert.equal(s.people.length,2);assert.ok(s.people[1].archivedAt);assert.equal(s.appointments.length,1);assert.equal(a.selected,0);assert.equal(a.mode,'separate');assert.equal(a.participants[0].opened,1);
   assert.equal(a.participants[0].entries[0].weight,'42');assert.equal(s.sessions[0].personId,'self');
   assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);assert.throws(()=>t.removePerson(s,'self'));
+});
+
+test('archive and restore preserve client photos, programs, flags and completed results across backup import',()=>{
+ const s=fixture(),p=s.people.find(p=>p.id==='c1');p.avatar={color:'#a35139',photo:'data:image/png;base64,aGVsbG8='};p.flags=['e1'];
+ const a=t.appointment(s,['c1'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);t.confirmEntry(a,'c1',0);t.finish(s,a.id,'c1');
+ const saved=JSON.stringify(p),history=JSON.stringify(s.sessions),snapshot=JSON.stringify(a);
+ t.removePerson(s,p.id);assert.ok(p.archivedAt);assert.equal(JSON.stringify(s.sessions),history);assert.equal(JSON.stringify(a),snapshot);
+ assert.throws(()=>t.appointment(s,[p.id],'12:00'));
+ const restored=t.migrate(JSON.parse(JSON.stringify(s)));t.restorePerson(restored,p.id);
+ assert.equal(JSON.stringify(restored.people.find(x=>x.id===p.id)),saved);assert.equal(JSON.stringify(restored.sessions),history);
+ t.restorePerson(restored,p.id);assert.equal(restored.people.length,2);
+ const broken=structuredClone(s);broken.people[0].archivedAt='2026-10-04';assert.throws(()=>t.validateStore(broken));
+ broken.people[0].archivedAt=undefined;broken.people[1].archivedAt='wrong';assert.throws(()=>t.validateStore(broken));
 });
 test('removing a mistaken active appointment neither writes history nor advances the program',()=>{
   const s=fixture(),a=t.appointment(s,['self'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);

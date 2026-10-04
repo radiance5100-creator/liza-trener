@@ -1146,6 +1146,23 @@ main {
 .exercise-detail {
   padding: 0 12px 4px;
 }
+.archive-client {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.archive-client > div {
+  flex: 1;
+  min-width: 80px;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.archive-client small { color: var(--muted); font-size: 11px; }
+.archive-client .text { font-size: 11px; }
 .photo-slider {
   display: flex;
   overflow: auto;

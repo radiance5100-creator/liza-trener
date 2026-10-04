@@ -61,6 +61,7 @@ import {
   nextProgramDay,
   correctResult,
   removePerson,
+  restorePerson,
   resultHistory,
   migrate,
   type Day,
@@ -920,7 +921,7 @@ function Trainer({ initial }: { initial: Store }) {
             <div className="people-list">
               {store.people
                 .filter((p) =>
-                  p.name.toLowerCase().includes(search.toLowerCase()),
+                  !p.archivedAt && p.name.toLowerCase().includes(search.toLowerCase()),
                 )
                 .map((p) => (
                   <button
@@ -1777,9 +1778,30 @@ function Trainer({ initial }: { initial: Store }) {
             })}
           </>
         )}
+        {route.page === "client-archive" && (
+          <>
+            {head("Архив клиентов", "Карточки, программы и история сохранены", { page: "more" })}
+            {!store.people.some((p) => p.archivedAt) && <p className="muted">В архиве пока нет клиентов.</p>}
+            {store.people.filter((p) => p.archivedAt).map((p) => (
+              <section className="surface archive-client" key={p.id}>
+                <Avatar person={p} />
+                <div><strong>{p.name}</strong><small>Удалён {labelDate(p.archivedAt!)}</small></div>
+                <button className="text" onClick={() => {
+                  mutate((next) => restorePerson(next, p.id));
+                  flash("Клиент восстановлен");
+                }}>Восстановить</button>
+              </section>
+            ))}
+          </>
+        )}
         {route.page === "more" && (
           <>
             {head("Ещё", "Всё для работы")}
+            <button className="library-row" onClick={() => go({ page: "client-archive" })}>
+              <Archive size={22} />
+              <span><strong>Архив клиентов</strong><small>{quantity(store.people.filter((p) => p.archivedAt).length, ["карточка", "карточки", "карточек"])} · восстановление</small></span>
+              <ChevronRight size={18} />
+            </button>
             <div className="section-title">
               <h2>Шаблоны программ</h2>
             </div>
@@ -2297,16 +2319,16 @@ function Trainer({ initial }: { initial: Store }) {
                 <>
                   <h2>Удалить клиента?</h2>
                   <p className="muted">
-                    {personById(modal.id).name}: карточка, программы, история и
-                    записи будут удалены. В парных занятиях второй участник
-                    останется.
+                    {personById(modal.id).name}: карточка, программы и история сохранятся
+                    в архиве. Предстоящие записи и незавершённые тренировки клиента
+                    будут убраны из расписания. В парных занятиях второй участник останется.
                   </p>
                   <button
-                    className="btn primary full"
+                    className="btn destructive full"
                     onClick={() => {
                       mutate((next) => removePerson(next, modal.id));
                       go({ page: "people" });
-                      flash("Клиент удалён");
+                      flash("Клиент перемещён в архив");
                     }}
                   >
                     Удалить клиента
@@ -2532,7 +2554,7 @@ function Trainer({ initial }: { initial: Store }) {
                         setModal({ ...modal, target: e.target.value })
                       }
                     >
-                      {store.people.map((p) => (
+                      {store.people.filter((p) => !p.archivedAt).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
                         </option>
@@ -2652,7 +2674,7 @@ function Trainer({ initial }: { initial: Store }) {
                         setModal({ ...modal, target: e.target.value })
                       }
                     >
-                      {store.people.map((p) => (
+                      {store.people.filter((p) => !p.archivedAt).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
                         </option>

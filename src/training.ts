@@ -18,6 +18,7 @@ export type RecordValue = {
 };
 export type Person = {
   id: string;
+  archivedAt?: string;
   name: string;
   short: string;
   avatar?: { photo?: string; color?: string };
@@ -181,6 +182,8 @@ export function appointment(
   ids: string[],
   time: string,
 ): Appointment {
+  if (ids.some((id) => store.people.find((p) => p.id === id)?.archivedAt))
+    throw new Error("Сначала восстановите клиента из архива");
   return {
     id: uid(),
     date: iso(),
@@ -229,9 +232,10 @@ export function removePerson(store: Store, id: string) {
   if (id === "self") throw new Error("Карточку «Я» нельзя удалить");
   const person = store.people.find((p) => p.id === id);
   if (!person) return;
-  store.people = store.people.filter((p) => p.id !== id);
-  store.sessions = store.sessions.filter((s) => s.personId !== id);
+  if (person.archivedAt) return;
+  person.archivedAt = iso();
   store.appointments = store.appointments.filter((a) => {
+    if (a.status === "done") return true;
     if (!a.participants.some((p) => p.personId === id)) return true;
     const selectedId = a.participants[a.selected]?.personId;
     const wasShared = a.mode === "shared";
@@ -251,6 +255,11 @@ export function removePerson(store: Store, id: string) {
       a.status = "done";
     return a.participants.length > 0;
   });
+}
+export function restorePerson(store: Store, id: string) {
+  const person = store.people.find((p) => p.id === id);
+  if (!person) throw new Error("Карточка клиента не найдена");
+  delete person.archivedAt;
 }
 export function startAppointment(store: Store, id: string): string {
   const a = store.appointments.find((a) => a.id === id)!;
@@ -701,6 +710,7 @@ export function validateStore(value: unknown): Store {
       (p) =>
         obj(p) &&
         str(p.id) &&
+        (p.archivedAt === undefined || (p.id !== "self" && date(p.archivedAt))) &&
         str(p.name) &&
         str(p.short) &&
         (p.avatar === undefined || (obj(p.avatar) &&
