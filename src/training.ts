@@ -56,6 +56,8 @@ export type Appointment = {
   status: "planned" | "active" | "done" | "cancelled";
   selected: number;
   sharedOpened: number;
+  prepared?: boolean;
+  awaitingSchedule?: boolean;
 };
 export type Session = {
   id: string;
@@ -261,6 +263,7 @@ export function startAppointment(store: Store, id: string): string {
     return a.id;
   }
   if (a.status !== "planned") throw new Error("Это занятие уже закрыто");
+  if (a.awaitingSchedule) throw new Error("Сначала запишите занятие в расписание");
   const conflict = store.appointments.find(
     (x) =>
       x.id !== id &&
@@ -312,6 +315,31 @@ export function confirmEntry(a: Appointment, personId: string, index: number) {
   else p.opened = next;
 }
 
+export function nextProgramDay(program: Program, currentDayId?: string): Day {
+  const index = currentDayId ? program.days.findIndex((d) => d.id === currentDayId) : program.days.length - 1;
+  if (currentDayId && index < 0) throw new Error("День программы не найден");
+  const existing = program.days[index + 1];
+  if (existing) return existing;
+  const day = { id: uid(), name: `День ${program.days.length + 1}`, exercises: [] };
+  program.days.push(day);
+  return day;
+}
+
+export function completePreparation(store: Store, appointmentId: string) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "planned" || !a.participants.every((p) => p.entries.length))
+    throw new Error("Добавьте упражнения для каждого участника");
+  a.prepared = true;
+}
+
+export function prepareOneOff(store: Store, appointmentId: string) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "planned") return;
+  const targets = a.mode === "shared" ? a.participants : [a.participants[a.selected]];
+  targets.forEach((p) => { p.programId = undefined; p.dayId = undefined; p.dayName = "Разовое занятие"; });
+  prepareExercises(store, appointmentId, []);
+}
+
 // Prepared snapshots deliberately contain no planned load or repetitions.
 export function prepareExercises(
   store: Store,
@@ -320,6 +348,7 @@ export function prepareExercises(
 ) {
   const a = store.appointments.find((a) => a.id === appointmentId);
   if (!a || a.status !== "planned") return;
+  a.prepared = false;
   const targets =
     a.mode === "shared" ? a.participants : [a.participants[a.selected]];
   const unique = [...new Set(ids)].filter((id) =>
@@ -408,6 +437,7 @@ export function prepareMode(
 ) {
   const a = store.appointments.find((a) => a.id === appointmentId);
   if (!a || a.status !== "planned" || a.mode === mode) return;
+  a.prepared = false;
   a.mode = mode;
   if (mode === "shared") {
     const source = a.participants[a.selected];
@@ -735,6 +765,9 @@ export function validateStore(value: unknown): Store {
         (a.duration === null ||
           (Number.isFinite(a.duration) && a.duration > 0)) &&
         ["planned", "active", "done", "cancelled"].includes(a.status) &&
+        (a.prepared === undefined || typeof a.prepared === "boolean") &&
+        (a.awaitingSchedule === undefined || typeof a.awaitingSchedule === "boolean") &&
+        (!a.awaitingSchedule || (a.status === "planned" && a.time === "")) &&
         ["separate", "shared"].includes(a.mode) &&
         list(a.participants, (p) => {
           if (

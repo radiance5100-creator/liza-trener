@@ -192,6 +192,10 @@
   --line: #ded8cc;
   --orange: #ffb162;
   --clay: #a35139;
+  --exercise-card-radius: 12px;
+  --exercise-card-gap: 8px;
+  --exercise-card-padding: 8px;
+  --control-size: 44px;
 }
 * {
   box-sizing: border-box;
@@ -948,18 +952,19 @@ main {
   flex-shrink: 0;
 }
 .edit-list {
-  margin-top: 18px;
+  margin-top: 12px;
   display: grid;
-  gap: 10px;
+  gap: var(--exercise-card-gap);
 }
 .edit-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  min-height: 76px;
   background: #fffdfa;
   border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 10px 5px 10px 0;
+  border-radius: var(--exercise-card-radius);
+  padding: var(--exercise-card-padding) 4px;
 }
 .edit-row .drag-handle {
   width: 32px;
@@ -969,11 +974,12 @@ main {
   cursor: grab;
   color: #a39a8a;
 }
-.edit-row > div:nth-of-type(2) {
+.edit-row-content {
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 4px;
+  padding: 4px 4px 4px 8px;
 }
 .edit-row strong {
   font-size: 12px;
@@ -984,13 +990,16 @@ main {
   font-size: 10px;
   color: var(--muted);
 }
-.edit-row > .icon:last-child {
-  width: 36px;
-  min-width: 44px;
+.edit-row .mini-photo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
 }
-.edit-row .text {
-  font-size: 11px;
-  justify-self: start;
+.edit-row .edit-row-replace {
+  color: var(--clay);
+}
+.edit-row .edit-row-replace:hover {
+  background: #a3513910;
 }
 .mini-photo {
   width: 40px;
@@ -1771,11 +1780,8 @@ p {
   font-size: 16px;
 }
 .edit-row .drag-handle {
-  width: 44px;
-  min-width: 44px;
-}
-.edit-row .text {
-  min-width: 44px;
+  width: var(--control-size);
+  min-width: var(--control-size);
 }
 .photo-actions {
   display: grid;
@@ -2111,3 +2117,18 @@ p {
 .avatar-custom-color { position: relative; display: grid; place-items: center; background: #e8e1d5; font-size: 24px; }
 .avatar-custom-color input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; padding: 0; }
 .avatar-editor .text { margin-top: 8px; min-height: 44px; }
+
+.program-day-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 5px 2px 12px; margin-bottom: 3px; }
+.program-day-tabs button { min-height: 44px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 12px; padding: 8px 14px; background: transparent; color: var(--navy); font: inherit; font-size: 12px; }
+.program-day-tabs button.selected { background: var(--navy); color: white; }
+.program-overview-link { min-height: 44px; margin-bottom: 8px; }
+.program-overview { overflow: auto; max-height: 65dvh; border: 1px solid var(--line); border-radius: 16px; background: #fffdfa; margin-top: 18px; }
+.program-overview table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed; }
+.program-overview th, .program-overview td { min-width: 170px; width: 170px; max-width: 170px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 12px; text-align: left; overflow-wrap: anywhere; vertical-align: top; font-size: 12px; }
+.program-overview th { position: sticky; top: 0; background: #e8e1d5; z-index: 1; padding: 0; }
+.program-overview th button { display: grid; gap: 4px; min-height: 60px; width: 100%; padding: 12px; text-align: left; background: transparent; border: 0; color: var(--navy); font: inherit; font-weight: 700; }
+.program-overview th small { font-weight: 400; font-size: 10px; }
+.program-overview td small { display: block; margin-bottom: 5px; font-size: 10px; color: var(--muted); }
+.picker-row.used-in-program:not(:disabled) { border-left: 3px solid #ffb162; }
+.picker-row .used-days { display: block; color: #80513c; font-size: 10px; margin-top: 4px; }
+.prepare-action.text { min-height: 44px; font-size: 12px; }

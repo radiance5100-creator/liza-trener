@@ -17,6 +17,7 @@ import {
   GripVertical,
   Copy,
   Replace,
+  RefreshCw,
   Trash2,
   CircleHelp,
   CheckCircle2,
@@ -27,6 +28,7 @@ import type { Exercise } from "./seed";
 import { Calendar } from "./Calendar";
 import { ScheduleFields } from "./ScheduleFields";
 import { Gallery, PhotoGrid } from "./Gallery";
+import { ProgramOverview } from "./ProgramOverview";
 import { Preparation } from "./Preparation";
 import { Avatar, AvatarEditor } from "./Avatar";
 import { ProgressTable } from "./ProgressTable";
@@ -44,7 +46,6 @@ import {
   format,
   newProgram,
   entry,
-  participant,
   appointment,
   finish,
   startAppointment,
@@ -54,6 +55,9 @@ import {
   prepareExercises,
   prepareDay,
   prepareMode,
+  prepareOneOff,
+  completePreparation,
+  nextProgramDay,
   correctResult,
   removePerson,
   resultHistory,
@@ -376,6 +380,7 @@ function Trainer({ initial }: { initial: Store }) {
       date: existing?.date ?? date,
       quick,
       editing: !!existing,
+      prepared: existing ? (existing.prepared ?? existing.participants.every((p) => p.entries.length > 0)) : false,
     });
   }
   function start(id: string) {
@@ -422,19 +427,32 @@ function Trainer({ initial }: { initial: Store }) {
   }
   function oneOff(personId: string) {
     const next = structuredClone(store);
-    const a = appointment(
-      next,
-      [personId],
-      new Date().toTimeString().slice(0, 5),
-    );
-    a.participants = [oneOffParticipant(personId)];
-    next.appointments.push(a);
-    const actual = startAppointment(next, a.id);
-    if (actual !== a.id)
-      next.appointments = next.appointments.filter((x) => x.id !== a.id);
+    let a = next.appointments.find((a) => a.awaitingSchedule && a.participants.length === 1 && a.participants[0].personId === personId);
+    if (!a) {
+      a = appointment(next, [personId], "");
+      a.date = today;
+      a.participants = [oneOffParticipant(personId)];
+      a.prepared = false;
+      a.awaitingSchedule = true;
+      next.appointments.push(a);
+    }
     setStore(next);
-    go({ page: "workout", appointment: actual });
-    if (actual === a.id) openPicker(undefined, undefined, true);
+    go({ page: "prepare", appointment: a.id, person: personId });
+  }
+  function goNextDay(currentDayId?: string) {
+    const next = structuredClone(store);
+    const pg = next.people.find((p) => p.id === person!.id)!.programs.find((p) => p.id === program!.id)!;
+    const d = nextProgramDay(pg, currentDayId);
+    setStore(next);
+    go({ page: "day", person: person!.id, program: pg.id, day: d.id });
+  }
+  function finishPreparation() {
+    const next = structuredClone(store);
+    completePreparation(next, current!.id);
+    const prepared = next.appointments.find((a) => a.id === current!.id)!;
+    setStore(next);
+    if (prepared.awaitingSchedule) newSchedule(false, prepared);
+    else { setDate(prepared.date); go({ page: "today" }); }
   }
   function deleteAppointment(id: string) {
     const saved = structuredClone(store.appointments.find((a) => a.id === id)!);
@@ -756,32 +774,23 @@ function Trainer({ initial }: { initial: Store }) {
             </p>
           </div>
         </div>
-        {a.status !== "cancelled" && (
-          <button
-            className={"btn full " + (a.status === "done" ? "soft" : "primary")}
-            onClick={() =>
-              a.status === "done"
-                ? go({ page: "summary", appointment: a.id })
-                : start(a.id)
-            }
-          >
+        {a.status === "planned" ? (
+          <>
+            <button className="btn primary full" onClick={() =>
+              (a.prepared ?? a.participants.every((p) => p.entries.length > 0))
+                ? start(a.id) : go({ page: "prepare", appointment: a.id })}>
+              {(a.prepared ?? a.participants.every((p) => p.entries.length > 0)) ? "Начать занятие" : "Подготовить занятие"}
+              <ArrowRight size={17} />
+            </button>
+            {(a.prepared ?? a.participants.every((p) => p.entries.length > 0)) && (
+              <button className="text full prepare-action" onClick={() => go({ page: "prepare", appointment: a.id })}>Изменить подготовку</button>
+            )}
+          </>
+        ) : a.status !== "cancelled" && (
+          <button className={"btn full " + (a.status === "done" ? "soft" : "primary")}
+            onClick={() => a.status === "done" ? go({ page: "summary", appointment: a.id }) : start(a.id)}>
             {a.status === "done" ? <Check size={17} /> : <Play size={16} />}
-            {active
-              ? "Продолжить"
-              : a.status === "done"
-                ? "Итоги занятия"
-                : "Начать тренировку"}
-            <ArrowRight size={17} />
-          </button>
-        )}
-        {a.status === "planned" && (
-          <button
-            className="btn outline full prepare-action"
-            onClick={() => go({ page: "prepare", appointment: a.id })}
-          >
-            {a.participants.some((p) => p.entries.length)
-              ? "Изменить упражнения"
-              : "Подготовить"}
+            {active ? "Продолжить" : "Итоги занятия"}<ArrowRight size={17} />
           </button>
         )}
       </article>
@@ -864,7 +873,7 @@ function Trainer({ initial }: { initial: Store }) {
               </>
             )}
             {store.appointments.some(
-              (a) => a.date === date && a.status !== "cancelled",
+              (a) => !a.awaitingSchedule && a.date === date && a.status !== "cancelled",
             ) && (
               <>
                 <div className="section-title">
@@ -875,7 +884,7 @@ function Trainer({ initial }: { initial: Store }) {
                   </h2>
                 </div>
                 {store.appointments
-                  .filter((a) => a.date === date && a.status !== "cancelled")
+                  .filter((a) => !a.awaitingSchedule && a.date === date && a.status !== "cancelled")
                   .sort((a, b) => a.time.localeCompare(b.time))
                   .map(appointmentCard)}
               </>
@@ -1003,13 +1012,13 @@ function Trainer({ initial }: { initial: Store }) {
                   className="btn primary full"
                   onClick={() => oneOff(person.id)}
                 >
-                  <Play size={17} />
-                  Разовая тренировка
+                  <BookOpen size={17} />
+                  {store.appointments.some((a) => a.awaitingSchedule && a.participants[0]?.personId === person.id) ? "Продолжить подготовку разового занятия" : "Подготовить разовое занятие"}
                 </button>
                 {store.appointments
                   .filter(
                     (a) =>
-                      a.date >= today &&
+                      !a.awaitingSchedule && a.date >= today &&
                       a.status === "planned" &&
                       a.participants.some((p) => p.personId === person.id),
                   )
@@ -1197,15 +1206,12 @@ function Trainer({ initial }: { initial: Store }) {
             ))}
             <button
               className="btn outline full"
-              onClick={() => setModal({ type: "new-day", name: "" })}
+              onClick={() => goNextDay()}
             >
               <Plus size={18} />
               Добавить день
             </button>
-            <div className="hint">
-              <BookOpen size={19} />
-              <p>Дни идут по порядку. На занятии можно выбрать другой день.</p>
-            </div>
+            {!!program.days.length && <button className="btn soft full" onClick={() => go({ ...route, page: "program-overview" })}>Обзор программы</button>}
           </>
         )}
         {route.page === "day" && day && person && (
@@ -1222,6 +1228,12 @@ function Trainer({ initial }: { initial: Store }) {
                 <MoreHorizontal size={22} />
               </button>,
             )}
+            <div className="program-day-tabs" aria-label="Дни программы">
+              {program!.days.map((d) => <button key={d.id} className={d.id === day.id ? "selected" : ""} aria-pressed={d.id === day.id}
+                onClick={() => go({ ...route, day: d.id })}>{d.name}</button>)}
+              <button aria-label="Добавить день программы" onClick={() => goNextDay()}><Plus size={18} /></button>
+            </div>
+            <button className="text program-overview-link" onClick={() => go({ ...route, page: "program-overview" })}>Обзор программы</button>
             <p className="muted small-text">
               {quantity(day.exercises.length)} · Потяните за ручку, чтобы
               изменить порядок
@@ -1289,14 +1301,18 @@ function Trainer({ initial }: { initial: Store }) {
                     <GripVertical size={18} />
                   </button>
                   <Picture exercise={ex(id)} />
-                  <div>
+                  <div className="edit-row-content">
                     <strong>{ex(id).name}</strong>
                     <small>{ex(id).group}</small>
-                    <button className="text" onClick={() => openPicker(id)}>
-                      <Replace size={13} />
-                      Заменить
-                    </button>
                   </div>
+                  <button
+                    className="icon edit-row-replace"
+                    aria-label={"Заменить " + ex(id).name}
+                    title="Заменить упражнение"
+                    onClick={() => openPicker(id)}
+                  >
+                    <RefreshCw size={18} />
+                  </button>
                   <button
                     className="icon"
                     aria-label={"Действия: " + ex(id).name}
@@ -1312,9 +1328,14 @@ function Trainer({ initial }: { initial: Store }) {
                 <Plus size={19} />
                 Добавить упражнения
               </button>
+              <button className="btn outline full" disabled={!day.exercises.length} onClick={() => goNextDay(day.id)}>Перейти к следующему дню <ArrowRight size={17} /></button>
             </div>
           </>
         )}
+        {route.page === "program-overview" && program && person && <>
+          {head("Обзор программы", person.name + " · " + program.name, { page: "program", person: person.id, program: program.id })}
+          <ProgramOverview program={program} exercises={store.exercises} onDay={(id) => go({ page: "day", person: person.id, program: program.id, day: id })} />
+        </>}
         {route.page === "workout" && current && activeParticipant && (
           <>
             {head(
@@ -1368,22 +1389,6 @@ function Trainer({ initial }: { initial: Store }) {
             )}
             {activeParticipant.status === "active" && (
               <div className="workout-tools">
-                {!activeParticipant.entries.length &&
-                  personById(activeParticipant.personId).programs.some(
-                    (pg) => pg.active && pg.days.length,
-                  ) && (
-                    <button
-                      className="btn soft full"
-                      disabled={
-                        current.mode === "shared" &&
-                        current.participants.some((p) => p.status !== "active")
-                      }
-                      onClick={() => setModal({ type: "choose-workout-day" })}
-                    >
-                      <BookOpen size={17} />
-                      Выбрать день программы
-                    </button>
-                  )}
                 {current.participants.length === 2 &&
                   current.participants.every(
                     (p) => p.status === "active" && !p.entries.length,
@@ -1552,10 +1557,8 @@ function Trainer({ initial }: { initial: Store }) {
             <>
               {head(
                 "Подготовка занятия",
-                labelDate(current.date) +
-                  " · " +
-                  (current.time || "Без времени"),
-                { page: "today" },
+                current.awaitingSchedule ? "Разовое занятие · дата и время после подготовки" : labelDate(current.date) + " · " + current.time,
+                current.awaitingSchedule ? { page: "person", person: activeParticipant.personId } : { page: "today" },
               )}
               {current.participants.length === 2 && (
                 <>
@@ -1613,7 +1616,7 @@ function Trainer({ initial }: { initial: Store }) {
               )}
               <h2>{personById(activeParticipant.personId).name}</h2>
               <p className="muted">{activeParticipant.dayName}</p>
-              {personById(activeParticipant.personId)
+              {!current.awaitingSchedule && personById(activeParticipant.personId)
                 .programs.filter((p) => p.active)
                 .flatMap((pg) =>
                   pg.days.map((d) => (
@@ -1635,6 +1638,10 @@ function Trainer({ initial }: { initial: Store }) {
                     </button>
                   )),
                 )}
+              {!current.awaitingSchedule && personById(activeParticipant.personId).programs.some((p) => p.active && p.days.length) && <button className="btn outline full prepare-action" onClick={() => {
+                if (activeParticipant.entries.length) setModal({ type: "prepare-change", action: "one-off" });
+                else mutate((next) => prepareOneOff(next, current.id));
+              }}>Составить разовое занятие</button>}
               <Preparation
                 participant={activeParticipant}
                 exercises={store.exercises}
@@ -1643,6 +1650,9 @@ function Trainer({ initial }: { initial: Store }) {
                 }
                 onReplace={(id) => openPicker(id)}
                 onAdd={() => openPicker()}
+                onDone={finishPreparation}
+                doneDisabled={!current.participants.every((p) => p.entries.length)}
+                doneLabel={current.awaitingSchedule ? "Выбрать дату и время" : "Готово, к расписанию"}
                 onRemove={(id) => {
                   const before = structuredClone(current);
                   mutate((next) =>
@@ -1692,12 +1702,7 @@ function Trainer({ initial }: { initial: Store }) {
                   flash("Упражнение убрано");
                 }}
               />
-              <button
-                className="btn soft full"
-                onClick={() => go({ page: "today" })}
-              >
-                К расписанию
-              </button>
+
             </>
           )}
         {route.page === "summary" && current && (
@@ -1935,7 +1940,7 @@ function Trainer({ initial }: { initial: Store }) {
               {modal.type === "schedule" && (
                 <>
                   <h2>
-                    {modal.editing
+                    {modal.awaitingSchedule ? "Запись подготовленного занятия" : modal.editing
                       ? "Изменить занятие"
                       : modal.quick
                         ? "Начать тренировку"
@@ -1965,6 +1970,7 @@ function Trainer({ initial }: { initial: Store }) {
                         status: "planned",
                         selected: 0,
                         sharedOpened: 0,
+                        prepared: !!modal.prepared && modal.participants.every((p: Participant) => p.entries.length),
                       };
                       if (a.mode === "shared" && a.participants.length === 2) {
                         const source =
@@ -2013,6 +2019,8 @@ function Trainer({ initial }: { initial: Store }) {
                   >
                     {modal.quick
                       ? "Начать тренировку"
+                      : modal.awaitingSchedule
+                        ? "Записать занятие"
                       : modal.editing
                         ? "Сохранить изменения"
                         : "Запись тренировки"}
@@ -2026,7 +2034,7 @@ function Trainer({ initial }: { initial: Store }) {
                   <p className="muted">
                     {modal.action === "mode"
                       ? "Для второго участника будет использован список выбранного человека. Его программа не изменится."
-                      : "Текущий список заменится упражнениями выбранного дня. Программа не изменится."}
+                      : modal.action === "one-off" ? "Текущий список будет очищен для разового занятия. Программа не изменится." : "Текущий список заменится упражнениями выбранного дня. Программа не изменится."}
                   </p>
                   <button
                     className="btn primary full"
@@ -2034,6 +2042,7 @@ function Trainer({ initial }: { initial: Store }) {
                       mutate((next) => {
                         if (modal.action === "mode")
                           prepareMode(next, current!.id, "shared");
+                        else if (modal.action === "one-off") prepareOneOff(next, current!.id);
                         else prepareDay(next, current!.id, modal.value);
                       });
                       setModal(null);
@@ -2047,62 +2056,6 @@ function Trainer({ initial }: { initial: Store }) {
                   >
                     Оставить текущий
                   </button>
-                </>
-              )}
-              {modal.type === "choose-workout-day" && (
-                <>
-                  <h2>День программы</h2>
-                  <p className="muted">
-                    {personById(activeParticipant!.personId).name}
-                  </p>
-                  {personById(activeParticipant!.personId)
-                    .programs.filter((pg) => pg.active)
-                    .flatMap((pg) =>
-                      pg.days.map((d) => (
-                        <button
-                          key={d.id}
-                          className="menu-item"
-                          onClick={() => {
-                            changeAppointment((a) => {
-                              const source = a.participants[a.selected];
-                              const chosen = participant(
-                                store,
-                                source.personId,
-                                d.id,
-                              );
-                              a.participants[a.selected] = {
-                                ...chosen,
-                                status: "active",
-                              };
-                              if (a.mode === "shared") {
-                                a.participants.forEach((p, i) => {
-                                  if (i !== a.selected) {
-                                    p.programId = undefined;
-                                    p.dayId = undefined;
-                                    p.dayName = d.name + " · совместная";
-                                    p.entries = d.exercises.map((id) =>
-                                      entry(store, p.personId, id),
-                                    );
-                                    p.opened = 0;
-                                  }
-                                });
-                                a.sharedOpened = 0;
-                              }
-                            });
-                            setModal(null);
-                          }}
-                        >
-                          <BookOpen size={18} />
-                          <span>
-                            {d.name}
-                            <small className="muted">
-                              {" "}
-                              · {quantity(d.exercises.length)}
-                            </small>
-                          </span>
-                        </button>
-                      )),
-                    )}
                 </>
               )}
               {modal.type === "picker" && (
@@ -2163,13 +2116,14 @@ function Trainer({ initial }: { initial: Store }) {
                                   (x) => x.id === e.id,
                                 )
                               : day?.exercises.includes(e.id);
+                          const usedDays = route.page === "day" ? program!.days.filter((d) => d.id !== day!.id && d.exercises.includes(e.id)).map((d) => d.name) : [];
                           const checked = modal.selected.includes(e.id);
                           return (
                             <button
                               aria-pressed={checked}
                               disabled={existing}
                               className={
-                                "picker-row " + (checked ? "chosen" : "")
+                                "picker-row " + (usedDays.length ? "used-in-program " : "") + (checked ? "chosen" : "")
                               }
                               key={e.id}
                               onClick={() =>
@@ -2193,6 +2147,7 @@ function Trainer({ initial }: { initial: Store }) {
                                     ? "Уже добавлено"
                                     : e.kind || e.group}
                                 </small>
+                                {!!usedDays.length && <small className="used-days">Уже в программе: {usedDays.join(", ")}</small>}
                               </span>
                               <span className="checkbox">
                                 {(checked || existing) && <Check size={15} />}
@@ -2297,7 +2252,7 @@ function Trainer({ initial }: { initial: Store }) {
                         onClick={() =>
                           a.status === "done"
                             ? go({ page: "summary", appointment: a.id })
-                            : start(a.id)
+                            : a.status === "planned" ? go({ page: "prepare", appointment: a.id }) : start(a.id)
                         }
                       >
                         <Play size={20} />
@@ -2479,7 +2434,7 @@ function Trainer({ initial }: { initial: Store }) {
                       } else {
                         const pg = {
                           ...newProgram(modal.name.trim()),
-                          days: [],
+                          days: [{ id: uid(), name: "День 1", exercises: [] }],
                         };
                         mutate((next) => {
                           const p = next.people.find(
@@ -2489,9 +2444,10 @@ function Trainer({ initial }: { initial: Store }) {
                           p.programs.push(pg);
                         });
                         go({
-                          page: "program",
+                          page: "day",
                           person: person!.id,
                           program: pg.id,
+                          day: pg.days[0].id,
                         });
                       }
                     }}

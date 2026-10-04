@@ -10,6 +10,9 @@ export function Preparation({
   onReplace,
   onAdd,
   onRemove,
+  onDone,
+  doneLabel,
+  doneDisabled,
 }: {
   participant: Participant;
   exercises: Exercise[];
@@ -17,6 +20,9 @@ export function Preparation({
   onReplace: (id: string) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
+  onDone: () => void;
+  doneLabel: string;
+  doneDisabled: boolean;
 }) {
   const drag = useRef<{ from: number; to: number } | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -109,10 +115,11 @@ export function Preparation({
         </p>
       )}
       <div className="sticky-action">
-        <button className="btn primary full" onClick={onAdd}>
+        <button className="btn outline full" onClick={onAdd}>
           <Plus size={18} />
           Добавить упражнения
         </button>
+        <button className="btn primary full" disabled={doneDisabled} onClick={onDone}>{doneLabel}</button>
       </div>
     </>
   );

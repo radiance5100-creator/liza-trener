@@ -35,7 +35,7 @@ export function Calendar({
   const [month, setMonth] = useState(selected);
   const events: Record<string, Appointment[]> = {};
   store.appointments
-    .filter((a) => a.status !== "cancelled")
+    .filter((a) => !a.awaitingSchedule && a.status !== "cancelled")
     .forEach((a) => {
       (events[a.date] ??= []).push(a);
     });

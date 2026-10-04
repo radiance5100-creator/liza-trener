@@ -25,7 +25,7 @@ export function ScheduleFields({
 }) {
   const booked = store.appointments.filter(
     (a) =>
-      a.date === draft.date && a.status !== "cancelled" && a.id !== draft.id,
+      a.date === draft.date && !a.awaitingSchedule && a.status !== "cancelled" && a.id !== draft.id,
   );
   const names = (a: Appointment) =>
     a.participants

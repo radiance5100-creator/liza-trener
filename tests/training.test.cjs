@@ -12,6 +12,36 @@ function load(name) {
 }
 const t=load('training');
 
+test('next day navigation reuses existing days and creates only one independent new day',()=>{
+ const pg=t.newProgram(),first=t.nextProgramDay(pg);first.exercises=['e1'];
+ const second=t.nextProgramDay(pg,first.id);second.exercises=['e2'];
+ assert.equal(t.nextProgramDay(pg,first.id).id,second.id);assert.equal(pg.days.length,2);
+ const third=t.nextProgramDay(pg,second.id);assert.equal(third.name,'День 3');assert.deepEqual(third.exercises,[]);
+ assert.deepEqual(first.exercises,['e1']);assert.throws(()=>t.nextProgramDay(pg,'missing'));
+});
+
+test('unscheduled preparation persists without starting, then scheduled start refreshes unconfirmed results',()=>{
+ const s=fixture(),a=t.appointment(s,['self'],'');a.awaitingSchedule=true;a.prepared=false;s.appointments.push(a);
+ assert.throws(()=>t.startAppointment(s,a.id));t.prepareDay(s,a.id,'d1');
+ const programs=JSON.stringify(s.people[0].programs);assert.equal(a.prepared,false);t.completePreparation(s,a.id);
+ assert.equal(a.prepared,true);assert.equal(a.status,'planned');assert.ok(a.participants[0].entries.every(e=>!e.done&&!e.weight&&!e.reps));
+ const restored=t.migrate(JSON.parse(JSON.stringify(s))),scheduled=restored.appointments[0];
+ delete scheduled.awaitingSchedule;scheduled.time='10:30';t.startAppointment(restored,a.id);
+ assert.equal(scheduled.status,'active');assert.equal(scheduled.participants[0].entries[0].weight,'22');
+ assert.equal(JSON.stringify(restored.people[0].programs),programs);assert.ok(scheduled.participants[0].entries.every(e=>!e.done));
+});
+
+test('preparation completion requires both pair lists; one-off clears cycle metadata and editing clears readiness',()=>{
+ const s=fixture(),a=t.appointment(s,['self','c1'],'10:00');a.participants.forEach(p=>p.entries=[]);s.appointments.push(a);
+ assert.throws(()=>t.completePreparation(s,a.id));t.prepareExercises(s,a.id,['e1']);assert.throws(()=>t.completePreparation(s,a.id));
+ a.selected=1;t.prepareExercises(s,a.id,['e2']);t.completePreparation(s,a.id);assert.equal(a.prepared,true);
+ a.selected=0;t.prepareOneOff(s,a.id);assert.equal(a.prepared,false);assert.equal(a.participants[0].programId,undefined);
+ assert.equal(a.participants[0].dayId,undefined);assert.equal(a.participants[0].entries.length,0);assert.equal(a.participants[1].entries[0].id,'e2');
+ t.prepareMode(s,a.id,'shared');t.prepareExercises(s,a.id,['e2']);t.completePreparation(s,a.id);
+ assert.ok(a.participants.every(p=>p.entries[0].id==='e2'));assert.equal(s.people[0].programs[0].next,0);
+ const bad=structuredClone(s);bad.appointments[0].awaitingSchedule=true;assert.throws(()=>t.validateStore(bad));
+});
+
 test('optional avatars survive backups and old stores, and invalid image/color values are rejected',()=>{
  const s=t.emptyStore();assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);
  s.people[0].avatar={color:'#ffb162',photo:'data:image/jpeg;base64,dGVzdA=='};
