@@ -6,6 +6,7 @@ import {
   MoreHorizontal,
   ArrowLeft,
   ArrowRight,
+  ArrowLeftRight,
   Plus,
   Check,
   X,
@@ -1520,7 +1521,7 @@ function Trainer({ initial }: { initial: Store }) {
                         }
                         onClick={() => openPicker(e.id, index)}
                       >
-                        <Replace size={15} />
+                        <ArrowLeftRight size={16} />
                         Заменить только сегодня
                       </button>
                     </div>

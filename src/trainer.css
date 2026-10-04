@@ -1101,10 +1101,10 @@ main {
   align-items: center;
   gap: 12px;
   text-align: left;
-  padding: 16px 13px;
+  padding: 10px 12px;
   border: 0;
   background: transparent;
-  min-height: 80px;
+  min-height: 56px;
 }
 .exercise-status {
   color: #938979;
@@ -1144,7 +1144,7 @@ main {
   transform: rotate(90deg);
 }
 .exercise-detail {
-  padding: 0 15px 12px;
+  padding: 0 12px 4px;
 }
 .photo-slider {
   display: flex;
@@ -1176,10 +1176,10 @@ main {
 }
 .result-form {
   border-top: 1px solid #eee6da;
-  padding-top: 5px;
+  padding-top: 0;
 }
 .result-form + .result-form {
-  margin-top: 18px;
+  margin-top: 12px;
 }
 .result-form .row strong {
   font-size: 12px;
@@ -1199,7 +1199,7 @@ main {
 .previous {
   font-size: 11px;
   color: var(--muted);
-  margin: 0 0 14px;
+  margin: 0 0 4px;
 }
 .previous b {
   color: #334253;
@@ -1208,11 +1208,11 @@ main {
 .inputs {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  gap: 8px;
 }
 .inputs label {
   display: grid;
-  gap: 7px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
   font-size: 10px;
@@ -1221,7 +1221,7 @@ main {
 }
 .inputs input {
   width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   border: 1px solid #ddd4c5;
   border-radius: 10px;
   background: #fbf8f2;
@@ -1234,11 +1234,13 @@ main {
   color: #a7a093;
 }
 .result-form .btn {
-  min-height: 46px;
+  min-height: 44px;
+  padding: 8px 12px;
+  margin-top: 8px;
 }
 .replace-today {
   display: flex;
-  margin: 8px auto 0;
+  margin: 0 auto;
   font-size: 11px;
   color: #817565;
 }
