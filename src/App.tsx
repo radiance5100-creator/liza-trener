@@ -62,6 +62,7 @@ import {
   correctResult,
   removePerson,
   restorePerson,
+  removeWorkoutExercise,
   resultHistory,
   migrate,
   type Day,
@@ -190,7 +191,7 @@ function Trainer({ initial }: { initial: Store }) {
   const [store, setStore] = useState<Store>(initial);
   const [route, setRoute] = useState<Route>({ page: "today" });
   const [date, setDate] = useState(today);
-  const [personTab, setPersonTab] = useState("Обзор");
+  const [personTab, setPersonTab] = useState("Программы");
   const [month, setMonth] = useState(today.slice(0, 7));
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("Все");
@@ -329,7 +330,7 @@ function Trainer({ initial }: { initial: Store }) {
   }, [route.page, route.appointment, current?.selected]);
   const personById = (id: string) => store.people.find((p) => p.id === id)!;
   function flash(message: string) {
-    if (!["Занятие удалено", "Упражнение убрано"].includes(message))
+    if (!["Занятие удалено", "Упражнение убрано", "Упражнение убрано из занятия", "Упражнение удалено из каталога"].includes(message))
       setUndo(null);
     setToast(message);
     const duration = message === "Занятие удалено" ? 3000 : 6000;
@@ -358,7 +359,7 @@ function Trainer({ initial }: { initial: Store }) {
       ),
     );
   }
-  function newSchedule(quick = false, existing?: Appointment) {
+  function newSchedule(quick = false, existing?: Appointment, selectedDate = date) {
     const sample =
       existing ??
       appointment(
@@ -379,7 +380,7 @@ function Trainer({ initial }: { initial: Store }) {
       manualTime: !!existing?.time && !scheduleTimes.includes(existing.time),
       changeDate: false,
       peopleQuery: "",
-      date: existing?.date ?? date,
+      date: existing?.date ?? selectedDate,
       quick,
       editing: !!existing,
       prepared: existing ? (existing.prepared ?? existing.participants.every((p) => p.entries.length > 0)) : false,
@@ -800,7 +801,7 @@ function Trainer({ initial }: { initial: Store }) {
   }
   const filteredExercises = store.exercises.filter(
     (e) =>
-      (group === "Все" || section(e.group) === group) &&
+      !e.deleted && (group === "Все" || section(e.group) === group) &&
       e.name.toLowerCase().includes(search.toLowerCase()),
   );
   return (
@@ -827,11 +828,7 @@ function Trainer({ initial }: { initial: Store }) {
           <>
             {head(
               date === today ? "Сегодня" : labelDate(date),
-              labelDate(date, {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-              }),
+              undefined,
               undefined,
               <button
                 className="icon"
@@ -852,7 +849,12 @@ function Trainer({ initial }: { initial: Store }) {
               store={store}
               date={date}
               today={today}
-              onChange={setDate}
+              onChange={(selectedDate) => {
+                setDate(selectedDate);
+                if (store.appointments.some((a) => a.date === selectedDate && !a.awaitingSchedule && a.status !== "cancelled"))
+                  setModal({ type: "calendar-day", date: selectedDate });
+                else newSchedule(false, undefined, selectedDate);
+              }}
             />
             <button
               className="btn primary full schedule-create"
@@ -928,7 +930,7 @@ function Trainer({ initial }: { initial: Store }) {
                     className="person-card"
                     key={p.id}
                     onClick={() => {
-                      setPersonTab("Обзор");
+                      setPersonTab("Программы");
                       go({ page: "person", person: p.id });
                     }}
                   >
@@ -970,7 +972,7 @@ function Trainer({ initial }: { initial: Store }) {
               </button>,
             )}
             <div className="tabs">
-              {["Обзор", "Программы", "История"].map((tab) => (
+              {["Программы", "История"].map((tab) => (
                 <button
                   key={tab}
                   className={personTab === tab ? "selected" : ""}
@@ -980,72 +982,8 @@ function Trainer({ initial }: { initial: Store }) {
                 </button>
               ))}
             </div>
-            {personTab === "Обзор" && (
+            {personTab === "История" && (
               <>
-                {person.programs.find((pg) => pg.active) ? (
-                  <button
-                    className="library-row"
-                    onClick={() =>
-                      go({
-                        page: "program",
-                        person: person.id,
-                        program: person.programs.find((pg) => pg.active)!.id,
-                      })
-                    }
-                  >
-                    <BookOpen size={20} />
-                    <span>
-                      <small>Активная программа</small>
-                      <strong>
-                        {person.programs.find((pg) => pg.active)!.name}
-                      </strong>
-                    </span>
-                    <ChevronRight size={18} />
-                  </button>
-                ) : (
-                  <button
-                    className="btn outline full"
-                    onClick={() => setModal({ type: "new-program", name: "" })}
-                  >
-                    Создать программу
-                  </button>
-                )}
-                <button
-                  className="btn primary full"
-                  onClick={() => oneOff(person.id)}
-                >
-                  <BookOpen size={17} />
-                  {store.appointments.some((a) => a.awaitingSchedule && a.participants[0]?.personId === person.id) ? "Продолжить подготовку разового занятия" : "Подготовить разовое занятие"}
-                </button>
-                {store.appointments
-                  .filter(
-                    (a) =>
-                      !a.awaitingSchedule && a.date >= today &&
-                      a.status === "planned" &&
-                      a.participants.some((p) => p.personId === person.id),
-                  )
-                  .sort((a, b) =>
-                    (a.date + a.time).localeCompare(b.date + b.time),
-                  )
-                  .slice(0, 1)
-                  .map((a) => (
-                    <div className="next-session" key={a.id}>
-                      <CalendarDays size={19} />
-                      <span>
-                        <small>Ближайшее занятие</small>
-                        <strong>
-                          {labelDate(a.date)} · {a.time}
-                        </strong>
-                      </span>
-                      <button
-                        className="icon"
-                        aria-label="Изменить ближайшее занятие"
-                        onClick={() => newSchedule(false, a)}
-                      >
-                        <ChevronRight size={20} />
-                      </button>
-                    </div>
-                  ))}
                 <section className="surface">
                   <div className="section-title">
                     <h2>Результаты</h2>
@@ -1076,6 +1014,8 @@ function Trainer({ initial }: { initial: Store }) {
             )}
             {personTab === "Программы" && (
               <>
+                <button className="btn primary full" onClick={() => oneOff(person.id)}><BookOpen size={17} />{store.appointments.some((a) => a.awaitingSchedule && a.participants[0]?.personId === person.id) ? "Продолжить подготовку разового занятия" : "Подготовить разовое занятие"}</button>
+
                 <div className="section-title">
                   <h2>Программы</h2>
                   <button
@@ -1525,6 +1465,11 @@ function Trainer({ initial }: { initial: Store }) {
                         <ArrowLeftRight size={16} />
                         Заменить только сегодня
                       </button>
+                      <button className="text danger remove-today"
+                        disabled={current.mode === "shared" ? current.participants.some((p) => p.status !== "active") : activeParticipant.status !== "active"}
+                        onClick={() => setModal({ type: "remove-workout-exercise", id: e.id, personId: activeParticipant.personId })}>
+                        <Trash2 size={16} /> Удалить из занятия
+                      </button>
                     </div>
                   )}
                 </article>
@@ -1960,6 +1905,51 @@ function Trainer({ initial }: { initial: Store }) {
                 (modal.type === "schedule" ? "schedule-scroll" : "")
               }
             >
+              {modal.type === "calendar-day" && (
+                <>
+                  <h2>{labelDate(modal.date)}</h2>
+                  {store.appointments.filter((a) => a.date === modal.date && !a.awaitingSchedule && a.status !== "cancelled").sort((a, b) => a.time.localeCompare(b.time)).map(appointmentCard)}
+                  <button className="btn primary full" onClick={() => newSchedule(false, undefined, modal.date)}><Plus size={18} />Запись тренировки</button>
+                </>
+              )}
+              {modal.type === "remove-workout-exercise" && (
+                <>
+                  <h2>Удалить из занятия?</h2>
+                  <p>{ex(modal.id).name}. Программа и прошлые результаты сохранятся.{current?.mode === "shared" ? " Упражнение будет убрано у обоих участников." : ""}</p>
+                  <button className="btn destructive full" onClick={() => {
+                    const appointmentId = current!.id, exerciseId = modal.id;
+                    const removed = (current!.mode === "shared" ? current!.participants : [activeParticipant!]).map((p) => ({ personId: p.personId, index: p.entries.findIndex((e) => e.id === exerciseId), entry: structuredClone(p.entries.find((e) => e.id === exerciseId)!) }));
+                    setUndo(() => (next: Store) => {
+                      const a = next.appointments.find((a) => a.id === appointmentId);
+                      if (!a || a.status !== "active") return;
+                      if (a.mode === "shared" && a.participants.some((p) => p.status !== "active")) return;
+                      removed.forEach((r) => {
+                        const p = a.participants.find((p) => p.personId === r.personId);
+                        if (!p || p.status !== "active" || !r.entry || p.entries.some((e) => e.id === exerciseId)) return;
+                        const openedId = p.entries[p.opened]?.id;
+                        const sharedId = a.participants[0].entries[a.sharedOpened]?.id;
+                        p.entries.splice(Math.min(r.index, p.entries.length), 0, r.entry);
+                        if (openedId) p.opened = p.entries.findIndex((e) => e.id === openedId);
+                        if (a.mode === "shared" && p === a.participants[0] && sharedId) a.sharedOpened = p.entries.findIndex((e) => e.id === sharedId);
+                      });
+                    });
+                    changeAppointment((a) => removeWorkoutExercise(a, modal.personId, modal.id));
+                    setModal(null); flash("Упражнение убрано из занятия");
+                  }}>Удалить упражнение</button>
+                </>
+              )}
+              {modal.type === "delete-catalog-exercise" && (
+                <>
+                  <h2>Удалить из каталога?</h2>
+                  <p>{ex(modal.id).name}. Упражнение останется в существующих программах и истории, но исчезнет из каталога выбора.</p>
+                  <button className="btn destructive full" onClick={() => {
+                    const id = modal.id;
+                    mutate((next) => { next.exercises.find((e) => e.id === id)!.deleted = true; });
+                    setUndo(() => (next: Store) => { delete next.exercises.find((e) => e.id === id)!.deleted; });
+                    setModal(null); flash("Упражнение удалено из каталога");
+                  }}>Удалить упражнение</button>
+                </>
+              )}
               {modal.type === "schedule" && (
                 <>
                   <h2>
@@ -2121,7 +2111,7 @@ function Trainer({ initial }: { initial: Store }) {
                   {sections.map((s) => {
                     const items = store.exercises.filter(
                       (e) =>
-                        section(e.group) === s &&
+                        !e.deleted && section(e.group) === s &&
                         (modal.group === "Все" || s === modal.group) &&
                         e.name
                           .toLowerCase()
@@ -2825,6 +2815,7 @@ function Trainer({ initial }: { initial: Store }) {
                 </>
               )}
               {modal.type === "exercise-preview" && (
+                <>
                 <ExerciseEditor
                   exercise={ex(modal.id)}
                   onSave={(exercise) => {
@@ -2838,6 +2829,8 @@ function Trainer({ initial }: { initial: Store }) {
                   }}
                   onOpen={(index) => setLightbox({ id: modal.id, index })}
                 />
+                <button className="btn outline full danger" onClick={() => setModal({ type: "delete-catalog-exercise", id: modal.id })}><Trash2 size={18} />Удалить из каталога</button>
+                </>
               )}
               {modal.type === "import" && importValue && (
                 <>

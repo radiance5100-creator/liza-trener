@@ -1,4 +1,5 @@
 export type Exercise = {
+  deleted?: boolean;
   id: string; name: string; group: string; kind: 'База' | 'Доп' | '';
   weight: string; reps: string; note: string; filmed: boolean;
   images: [string | null, string | null];

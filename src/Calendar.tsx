@@ -70,18 +70,6 @@ export function Calendar({
           }}
         />
       </Events.Provider>
-      <div className="calendar-footer">
-        <span className="calendar-legend">Количество занятий</span>
-        <button
-          className="calendar-today"
-          onClick={() => {
-            setMonth(new Date(today + "T12:00:00"));
-            onChange(today);
-          }}
-        >
-          Сегодня
-        </button>
-      </div>
     </section>
   );
 }

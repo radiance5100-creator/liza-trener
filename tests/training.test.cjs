@@ -12,6 +12,24 @@ function load(name) {
 }
 const t=load('training');
 
+test('workout deletion is personal, preserves open identity and cannot change finished participants',()=>{
+ const s=fixture(),a=t.appointment(s,['self','c1'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);
+ const programs=JSON.stringify(s.people.map(p=>p.programs));a.participants[0].opened=1;
+ t.removeWorkoutExercise(a,'self','e1');assert.equal(a.participants[0].entries[0].id,'e2');assert.equal(a.participants[0].opened,0);assert.equal(a.participants[1].entries[0].id,'e1');
+ assert.equal(JSON.stringify(s.people.map(p=>p.programs)),programs);
+ t.removeWorkoutExercise(a,'self','e2');assert.equal(a.participants[0].opened,0);assert.deepEqual(a.participants[0].entries,[]);
+ a.mode='shared';a.participants[0].entries=[t.entry(s,'self','e1')];a.participants[1].entries=[t.entry(s,'c1','e1')];a.sharedOpened=0;
+ a.participants[1].status='done';const before=JSON.stringify(a);assert.throws(()=>t.removeWorkoutExercise(a,'self','e1'));assert.equal(JSON.stringify(a),before);
+ a.participants[1].status='active';t.removeWorkoutExercise(a,'self','e1');assert.ok(a.participants.every(p=>p.entries.length===0));assert.equal(a.sharedOpened,0);
+ a.status='done';assert.throws(()=>t.removeWorkoutExercise(a,'self','e1'));
+});
+
+test('catalog deletion keeps program and result references valid through backup import',()=>{
+ const s=fixture();s.exercises[0].deleted=true;
+ const restored=t.migrate(JSON.parse(JSON.stringify(s)));assert.equal(restored.exercises[0].deleted,true);assert.deepEqual(restored.people,s.people);assert.deepEqual(restored.sessions,s.sessions);
+ restored.exercises[0].deleted='yes';assert.throws(()=>t.validateStore(restored));
+});
+
 test('next day navigation reuses existing days and creates only one independent new day',()=>{
  const pg=t.newProgram(),first=t.nextProgramDay(pg);first.exercises=['e1'];
  const second=t.nextProgramDay(pg,first.id);second.exercises=['e2'];

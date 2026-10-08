@@ -261,6 +261,23 @@ export function restorePerson(store: Store, id: string) {
   if (!person) throw new Error("Карточка клиента не найдена");
   delete person.archivedAt;
 }
+export function removeWorkoutExercise(a: Appointment, personId: string, exerciseId: string) {
+  if (a.status !== "active") throw new Error("Занятие уже закрыто");
+  const targets = a.mode === "shared" ? a.participants : a.participants.filter((p) => p.personId === personId);
+  if (!targets.length || targets.some((p) => p.status !== "active"))
+    throw new Error("Нельзя менять завершённую тренировку");
+  const sharedId = a.participants[0].entries[a.sharedOpened]?.id;
+  targets.forEach((p) => {
+    const openedId = p.entries[p.opened]?.id;
+    p.entries = p.entries.filter((e) => e.id !== exerciseId);
+    const index = p.entries.findIndex((e) => e.id === openedId);
+    p.opened = index >= 0 ? index : Math.min(p.opened, Math.max(0, p.entries.length - 1));
+  });
+  if (a.mode === "shared") {
+    const index = a.participants[0].entries.findIndex((e) => e.id === sharedId);
+    a.sharedOpened = index >= 0 ? index : Math.min(a.sharedOpened, Math.max(0, a.participants[0].entries.length - 1));
+  }
+}
 export function startAppointment(store: Store, id: string): string {
   const a = store.appointments.find((a) => a.id === id)!;
   if (a.status === "active") {
@@ -671,6 +688,7 @@ export function validateStore(value: unknown): Store {
       (e) =>
         obj(e) &&
         str(e.id) &&
+        (e.deleted === undefined || typeof e.deleted === "boolean") &&
         str(e.name) &&
         str(e.group) &&
         str(e.note) &&

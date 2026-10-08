@@ -1261,6 +1261,7 @@ main {
   font-size: 11px;
   color: #817565;
 }
+.remove-today { display: flex; margin: 0 auto; font-size: 11px; }
 .status-line {
   display: flex;
   align-items: center;
