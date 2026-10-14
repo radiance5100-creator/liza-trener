@@ -6,9 +6,10 @@ export function Avatar({ person, small = false }: { person: Person; small?: bool
   const color = person.avatar?.color;
   const rgb = color ? [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)) : [];
   const foreground = rgb.length && rgb[0] * .299 + rgb[1] * .587 + rgb[2] * .114 > 155 ? "#1b2632" : "#fff";
+  const text = person.avatar?.text?.trim() || person.short;
   return <span className={"avatar " + (small ? "small " : "") + person.id}
-    style={color ? { backgroundColor: color, color: foreground } : undefined}>
-    {person.avatar?.photo ? <img src={person.avatar.photo} alt="" /> : person.short}
+    style={{ ...(color ? { backgroundColor: color, color: foreground } : {}), ...(Array.from(text).length > 3 ? { fontSize: small ? 10 : 12 } : {}) }}>
+    {person.avatar?.photo ? <img src={person.avatar.photo} alt="" /> : text}
   </span>;
 }
 
@@ -21,7 +22,7 @@ export function AvatarEditor({ person, onChange, onBusy }: {
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const chooseColor = (color: string) => onChange({ color });
+  const chooseColor = (color: string) => onChange({ color, text: person.avatar?.text });
   return <div className="avatar-editor">
     <div className="avatar-edit-preview">
       <Avatar person={person} />
@@ -43,7 +44,14 @@ export function AvatarEditor({ person, onChange, onBusy }: {
           }} />
       </label>
     </div>
-    <span className="avatar-color-label">Или цвет вместо фото</span>
+    <label className="field avatar-text-field">
+      <span>Буквы или эмодзи</span>
+      <input aria-label="Буквы или эмодзи аватара" disabled={busy}
+        placeholder={person.short || "Например, АЛ или 💪"}
+        value={person.avatar?.text ?? ""}
+        onChange={(event) => onChange({ color: person.avatar?.color, text: Array.from(event.target.value).slice(0, 8).join("") })} />
+    </label>
+    <span className="avatar-color-label">Фон для букв или эмодзи</span>
     <div className="avatar-colors">
       {colors.map((color) => <button key={color} type="button" disabled={busy}
         className="avatar-swatch" style={{ backgroundColor: color }}

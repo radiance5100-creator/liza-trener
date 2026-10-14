@@ -12,6 +12,17 @@ function load(name) {
 }
 const t=load('training');
 
+test('custom avatar letters and emoji survive backups and client archival with old avatars still valid',()=>{
+ for(const text of ['АЛ','💪','🧘‍♀️']) {
+  const s=fixture(),p=s.people.find(p=>p.id==='c1');p.avatar={text,color:'#ffb162'};
+  t.removePerson(s,p.id);const restored=t.migrate(JSON.parse(JSON.stringify(s)));t.restorePerson(restored,p.id);
+  assert.deepEqual(restored.people.find(p=>p.id==='c1').avatar,{text,color:'#ffb162'});
+ }
+ const s=fixture();s.people[1].avatar={text:123};assert.throws(()=>t.validateStore(s));
+ s.people[1].avatar={text:'123456789'};assert.throws(()=>t.validateStore(s));
+ s.people[1].avatar={color:'#2c3b4d'};assert.doesNotThrow(()=>t.validateStore(s));
+});
+
 test('workout deletion is personal, preserves open identity and cannot change finished participants',()=>{
  const s=fixture(),a=t.appointment(s,['self','c1'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);
  const programs=JSON.stringify(s.people.map(p=>p.programs));a.participants[0].opened=1;

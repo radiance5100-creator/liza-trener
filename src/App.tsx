@@ -192,6 +192,7 @@ function Trainer({ initial }: { initial: Store }) {
   const [route, setRoute] = useState<Route>({ page: "today" });
   const [date, setDate] = useState(today);
   const [personTab, setPersonTab] = useState("Программы");
+  const [exerciseTab, setExerciseTab] = useState("Каталог");
   const [month, setMonth] = useState(today.slice(0, 7));
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("Все");
@@ -330,7 +331,7 @@ function Trainer({ initial }: { initial: Store }) {
   }, [route.page, route.appointment, current?.selected]);
   const personById = (id: string) => store.people.find((p) => p.id === id)!;
   function flash(message: string) {
-    if (!["Занятие удалено", "Упражнение убрано", "Упражнение убрано из занятия", "Упражнение удалено из каталога"].includes(message))
+    if (!["Занятие удалено", "Упражнение убрано", "Упражнение убрано из занятия", "Упражнение перемещено в архив"].includes(message))
       setUndo(null);
     setToast(message);
     const duration = message === "Занятие удалено" ? 3000 : 6000;
@@ -801,7 +802,7 @@ function Trainer({ initial }: { initial: Store }) {
   }
   const filteredExercises = store.exercises.filter(
     (e) =>
-      !e.deleted && (group === "Все" || section(e.group) === group) &&
+      (exerciseTab === "Архив" ? !!e.deleted : !e.deleted) && (group === "Все" || section(e.group) === group) &&
       e.name.toLowerCase().includes(search.toLowerCase()),
   );
   return (
@@ -972,7 +973,7 @@ function Trainer({ initial }: { initial: Store }) {
               </button>,
             )}
             <div className="tabs">
-              {["Программы", "История"].map((tab) => (
+              {["Программы", "Архив", "История"].map((tab) => (
                 <button
                   key={tab}
                   className={personTab === tab ? "selected" : ""}
@@ -1012,8 +1013,9 @@ function Trainer({ initial }: { initial: Store }) {
                 </div>
               </>
             )}
-            {personTab === "Программы" && (
+            {(personTab === "Программы" || personTab === "Архив") && (
               <>
+                {personTab === "Программы" && <>
                 <button className="btn primary full" onClick={() => oneOff(person.id)}><BookOpen size={17} />{store.appointments.some((a) => a.awaitingSchedule && a.participants[0]?.personId === person.id) ? "Продолжить подготовку разового занятия" : "Подготовить разовое занятие"}</button>
 
                 <div className="section-title">
@@ -1026,7 +1028,9 @@ function Trainer({ initial }: { initial: Store }) {
                     <Plus size={22} />
                   </button>
                 </div>
-                {person.programs.map((pg) => (
+                </>}
+                {!person.programs.some((pg) => personTab === "Архив" ? !pg.active : pg.active) && <p className="muted">{personTab === "Архив" ? "В архиве пока нет программ." : "Активной программы пока нет."}</p>}
+                {person.programs.filter((pg) => personTab === "Архив" ? !pg.active : pg.active).map((pg) => (
                   <button
                     className="program-card"
                     key={pg.id}
@@ -1672,6 +1676,9 @@ function Trainer({ initial }: { initial: Store }) {
         {route.page === "exercises" && (
           <>
             {head("Упражнения", "Общая библиотека")}
+            <div className="tabs">
+              {["Каталог", "Архив"].map((tab) => <button key={tab} className={exerciseTab === tab ? "selected" : ""} onClick={() => setExerciseTab(tab)}>{tab}</button>)}
+            </div>
             <div className="search">
               <Search size={18} />
               <input
@@ -1721,6 +1728,7 @@ function Trainer({ initial }: { initial: Store }) {
                 </section>
               ) : null;
             })}
+            {!filteredExercises.length && <p className="muted">{exerciseTab === "Архив" ? "В архиве нет подходящих упражнений." : "Упражнения не найдены."}</p>}
           </>
         )}
         {route.page === "client-archive" && (
@@ -1940,14 +1948,14 @@ function Trainer({ initial }: { initial: Store }) {
               )}
               {modal.type === "delete-catalog-exercise" && (
                 <>
-                  <h2>Удалить из каталога?</h2>
-                  <p>{ex(modal.id).name}. Упражнение останется в существующих программах и истории, но исчезнет из каталога выбора.</p>
+                  <h2>В архив упражнений?</h2>
+                  <p>{ex(modal.id).name}. Упражнение исчезнет из каталога, программы и история сохранятся. Вернуть его можно во вкладке «Архив».</p>
                   <button className="btn destructive full" onClick={() => {
                     const id = modal.id;
                     mutate((next) => { next.exercises.find((e) => e.id === id)!.deleted = true; });
                     setUndo(() => (next: Store) => { delete next.exercises.find((e) => e.id === id)!.deleted; });
-                    setModal(null); flash("Упражнение удалено из каталога");
-                  }}>Удалить упражнение</button>
+                    setModal(null); flash("Упражнение перемещено в архив");
+                  }}>Переместить в архив</button>
                 </>
               )}
               {modal.type === "schedule" && (
@@ -2829,7 +2837,12 @@ function Trainer({ initial }: { initial: Store }) {
                   }}
                   onOpen={(index) => setLightbox({ id: modal.id, index })}
                 />
-                <button className="btn outline full danger" onClick={() => setModal({ type: "delete-catalog-exercise", id: modal.id })}><Trash2 size={18} />Удалить из каталога</button>
+                {ex(modal.id).deleted ? <button className="btn primary full" onClick={() => {
+                  const id = modal.id;
+                  mutate((next) => { delete next.exercises.find((e) => e.id === id)!.deleted; });
+                  setModal(null); flash("Упражнение возвращено в каталог");
+                }}><ArrowLeftRight size={18} />Вернуть в каталог</button> :
+                <button className="btn outline full" onClick={() => setModal({ type: "delete-catalog-exercise", id: modal.id })}><Archive size={18} />В архив</button>}
                 </>
               )}
               {modal.type === "import" && importValue && (
