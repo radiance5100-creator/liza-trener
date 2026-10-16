@@ -7,17 +7,19 @@ export function ExerciseEditor({
   exercise,
   onSave,
   onOpen,
+  isNew = false,
 }: {
   exercise: Exercise;
   onSave: (e: Exercise) => void;
   onOpen?: (index: number) => void;
+  isNew?: boolean;
 }) {
   const [value, setValue] = useState(() => structuredClone(exercise));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
     <>
-      <h2>Упражнение</h2>
+      <h2>{isNew ? "Новое упражнение" : "Упражнение"}</h2>
       <label className="field">
         <span>Название</span>
         <input
@@ -62,6 +64,11 @@ export function ExerciseEditor({
           </select>
         </label>
       </div>
+      <label className="field"><span>Оборудование</span>
+        <select value={value.equipment ?? ""} onChange={(event) => setValue({ ...value, equipment: event.target.value as Exercise["equipment"] })}>
+          <option value="">Без уточнения</option><option value="barbell">Со штангой</option><option value="dumbbells">С гантелями</option>
+        </select>
+      </label>
       <Gallery
         onOpen={value.images.every((image,index)=>image===exercise.images[index]) ? onOpen : undefined}
         images={value.images.filter((x): x is string => !!x)}
@@ -120,7 +127,7 @@ export function ExerciseEditor({
         disabled={busy || !value.name.trim()}
         onClick={() => onSave({ ...value, name: value.name.trim() })}
       >
-        {busy ? "Обрабатываем фото…" : "Сохранить изменения"}
+        {busy ? "Обрабатываем фото…" : isNew ? "Добавить упражнение" : "Сохранить изменения"}
       </button>
     </>
   );

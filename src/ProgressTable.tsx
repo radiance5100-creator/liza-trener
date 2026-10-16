@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { format, resultHistory, type Store } from "./training";
+import { format, resultHistory, equipmentLabel, type Store } from "./training";
 
 export function ProgressTable({ store, personId, onHistory }: {
   store: Store;
@@ -24,7 +24,7 @@ export function ProgressTable({ store, personId, onHistory }: {
             </button>
           </th></tr>
           <tr>{values.map((r, index) => <td key={index}>
-            {r ? format(r.weight, r.reps) : <span className="muted" aria-label="Нет результата">—</span>}
+            {r ? <>{format(r.weight, r.reps)}{equipmentLabel(r.equipment) && <small className="equipment-history">{equipmentLabel(r.equipment)}</small>}</> : <span className="muted" aria-label="Нет результата">—</span>}
           </td>)}</tr>
         </tbody>;
       })}

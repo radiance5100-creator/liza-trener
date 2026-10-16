@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { GripVertical, Replace, Trash2, Plus } from "lucide-react";
 import type { Exercise } from "./seed";
 import type { Participant } from "./training";
+import { ExerciseOptions, type OptionItem } from "./ExerciseOptions";
+import { setClass } from "./training";
 
 export function Preparation({
   participant,
@@ -13,6 +15,7 @@ export function Preparation({
   onDone,
   doneLabel,
   doneDisabled,
+  onOptions,
 }: {
   participant: Participant;
   exercises: Exercise[];
@@ -23,6 +26,7 @@ export function Preparation({
   onDone: () => void;
   doneLabel: string;
   doneDisabled: boolean;
+  onOptions: (items: OptionItem[]) => void;
 }) {
   const drag = useRef<{ from: number; to: number } | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -43,7 +47,7 @@ export function Preparation({
           return (
             <article
               className={
-                "edit-row preparation-row" +
+                "edit-row preparation-row" + setClass(participant.entries, i) +
                 (dropIndex === i ? " drop-target" : "")
               }
               data-preparation-index={i}
@@ -105,6 +109,7 @@ export function Preparation({
               >
                 <Trash2 size={17} />
               </button>
+              <ExerciseOptions items={participant.entries} index={i} onChange={onOptions} />
             </article>
           );
         })}

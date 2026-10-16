@@ -1,4 +1,5 @@
 import type { Program } from "./training";
+import { equipmentLabel, setClass } from "./training";
 import type { Exercise } from "./seed";
 
 export function ProgramOverview({ program, exercises, onDay }: {
@@ -15,8 +16,8 @@ export function ProgramOverview({ program, exercises, onDay }: {
           <button onClick={() => onDay(d.id)}>{d.name}<small>{d.exercises.length} {d.exercises.length % 10 === 1 && d.exercises.length % 100 !== 11 ? "упражнение" : [2, 3, 4].includes(d.exercises.length % 10) && ![12, 13, 14].includes(d.exercises.length % 100) ? "упражнения" : "упражнений"}</small></button>
         </th>)}</tr></thead>
         <tbody>{Array.from({ length: Math.max(1, rows) }, (_, index) => <tr key={index}>
-          {program.days.map((d) => <td key={d.id}>
-            {d.exercises[index] ? <><small>{index + 1}</small><span>{exercises.find((e) => e.id === d.exercises[index])?.name ?? "Упражнение"}</span></> : <span className="muted">—</span>}
+          {program.days.map((d) => <td key={d.id} className={setClass(d.exercises.map((id) => ({ ...d.options?.[id] })), index)}>
+            {d.exercises[index] ? <><small>{index + 1}</small><span>{exercises.find((e) => e.id === d.exercises[index])?.name ?? "Упражнение"}</span><small>{equipmentLabel(d.options?.[d.exercises[index]]?.equipment ?? exercises.find((e) => e.id === d.exercises[index])?.equipment)}</small></> : <span className="muted">—</span>}
           </td>)}
         </tr>)}</tbody>
       </table>

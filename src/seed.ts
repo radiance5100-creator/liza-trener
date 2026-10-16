@@ -1,4 +1,5 @@
 export type Exercise = {
+  equipment?: "" | "barbell" | "dumbbells";
   deleted?: boolean;
   id: string; name: string; group: string; kind: 'База' | 'Доп' | '';
   weight: string; reps: string; note: string; filmed: boolean;

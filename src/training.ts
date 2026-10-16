@@ -1,7 +1,34 @@
 import { initialExercises, type Exercise } from "./seed";
 import { validateData, type Result } from "./storage";
 
-export type Day = { id: string; name: string; exercises: string[] };
+export type ExerciseOptions = { equipment?: "" | "barbell" | "dumbbells"; setId?: string };
+export type Day = { id: string; name: string; exercises: string[]; options?: Record<string, ExerciseOptions> };
+export const equipmentLabel = (value?: string) => value === "barbell" ? "Со штангой" : value === "dumbbells" ? "С гантелями" : "";
+export function setClass(items: { setId?: string }[], index: number) {
+  const id = items[index]?.setId;
+  if (!id) return "";
+  return " grouped-exercise" + (items[index - 1]?.setId === id ? " group-middle" : " group-start") + (items[index + 1]?.setId === id ? "" : " group-end");
+}
+export function normalizeSets<T extends { id: string; setId?: string }>(items: T[]) {
+  for (let i = 0; i < items.length;) {
+    const group = items[i].setId;
+    if (!group) { i++; continue; }
+    let end = i + 1;
+    while (end < items.length && items[end].setId === group) end++;
+    if (end - i < 2) delete items[i].setId;
+    i = end;
+  }
+}
+export function setExerciseGroup<T extends { id: string; setId?: string }>(items: T[], index: number, linked: boolean): T[] {
+  const next = structuredClone(items);
+  if (!next[index]) return next;
+  if (linked) {
+    const previous = next[index - 1];
+    if (!previous || (previous.setId && next.filter((e) => e.setId === previous.setId && e.id !== next[index].id).length >= 3)) return next;
+    const group = previous.setId || uid(); previous.setId = group; next[index].setId = group;
+  } else delete next[index].setId;
+  normalizeSets(next); return next;
+}
 export type Program = {
   id: string;
   name: string;
@@ -10,6 +37,7 @@ export type Program = {
   active: boolean;
 };
 export type RecordValue = {
+  equipment?: ExerciseOptions["equipment"];
   id: string;
   name: string;
   weight: string;
@@ -28,7 +56,7 @@ export type Person = {
   flags: string[];
   records: RecordValue[];
 };
-export type Entry = {
+export type Entry = ExerciseOptions & {
   id: string;
   name: string;
   weight: string;
@@ -129,10 +157,11 @@ export function resultHistory(
           weight: r.weight,
           reps: r.reps,
           date: s.date,
+          ...(r.equipment !== undefined ? { equipment: r.equipment } : {}),
         })),
     );
   const key = (r: RecordValue) =>
-    JSON.stringify([r.id, r.date, r.weight, r.reps]);
+    JSON.stringify([r.id, r.date, r.weight, r.reps, r.equipment || ""]);
   const sessionValues = new Set(sessions.map(key));
   const records = (
     store.people.find((p) => p.id === personId)?.records ?? []
@@ -143,8 +172,9 @@ export function resultHistory(
     .filter((r) => !exerciseId || r.id === exerciseId)
     .sort((a, b) => a.date.localeCompare(b.date));
 }
-export function entry(store: Store, personId: string, id: string): Entry {
-  const r = resultHistory(store, personId, id).at(-1);
+export function entry(store: Store, personId: string, id: string, options?: ExerciseOptions): Entry {
+  const equipment = options?.equipment ?? store.exercises.find((e) => e.id === id)?.equipment;
+  const r = resultHistory(store, personId, id).filter((r) => (r.equipment || "") === (equipment || "")).at(-1);
   return {
     id,
     name:
@@ -154,6 +184,8 @@ export function entry(store: Store, personId: string, id: string): Entry {
     done: false,
     previous: r ? format(r.weight, r.reps) : "",
     previousDate: r?.date ?? "",
+    equipment: equipment ?? "",
+    ...(options?.setId ? { setId: options.setId } : {}),
   };
 }
 export function participant(
@@ -171,7 +203,7 @@ export function participant(
     programId: program?.id,
     dayId: day?.id,
     dayName: day?.name ?? "Без программы",
-    entries: (day?.exercises ?? []).map((id) => entry(store, personId, id)),
+    entries: (day?.exercises ?? []).map((id) => entry(store, personId, id, day?.options?.[id])),
     opened: 0,
     status: "pending",
     scroll: 0,
@@ -270,6 +302,7 @@ export function removeWorkoutExercise(a: Appointment, personId: string, exercise
   targets.forEach((p) => {
     const openedId = p.entries[p.opened]?.id;
     p.entries = p.entries.filter((e) => e.id !== exerciseId);
+    normalizeSets(p.entries);
     const index = p.entries.findIndex((e) => e.id === openedId);
     p.opened = index >= 0 ? index : Math.min(p.opened, Math.max(0, p.entries.length - 1));
   });
@@ -306,7 +339,7 @@ export function startAppointment(store: Store, id: string): string {
   // Refresh personal results at start, not when the appointment was created.
   a.participants.forEach((p) => {
     if (p.status === "pending") {
-      p.entries = p.entries.map((e) => entry(store, p.personId, e.id));
+      p.entries = p.entries.map((e) => entry(store, p.personId, e.id, e));
       p.status = "active";
     }
   });
@@ -339,6 +372,11 @@ export function confirmEntry(a: Appointment, personId: string, index: number) {
   if (next < 0) next = p.entries.findIndex((_, i) => incomplete(i));
   if (a.mode === "shared") a.sharedOpened = next;
   else p.opened = next;
+}
+export function confirmSharedEntry(a: Appointment, index: number) {
+  const targets = a.participants.filter((p) => p.status === "active");
+  if (a.mode !== "shared" || a.status !== "active" || !targets.length || targets.some((p) => !p.entries[index]?.weight.trim() || !p.entries[index]?.reps.trim())) return;
+  targets.forEach((p) => confirmEntry(a, p.personId, index));
 }
 
 export function nextProgramDay(program: Program, currentDayId?: string): Day {
@@ -380,20 +418,34 @@ export function prepareExercises(
   const unique = [...new Set(ids)].filter((id) =>
     store.exercises.some((e) => e.id === id),
   );
+  const sourceOptions = new Map(a.participants[a.selected].entries.map((e) => [e.id, e]));
   const sharedId = a.participants[0].entries[a.sharedOpened]?.id;
+  const sourceEntries = a.participants[a.selected].entries;
   targets.forEach((p) => {
     const openedId = p.entries[p.opened]?.id;
     p.entries = unique.map((id) => ({
-      ...entry(store, p.personId, id),
+      ...entry(store, p.personId, id, (a.mode === "shared" ? sourceEntries : p.entries).find((e) => e.id === id) ?? sourceOptions.get(id)),
       weight: "",
       reps: "",
       previous: "",
       previousDate: "",
     }));
+    normalizeSets(p.entries);
     p.opened = openedId ? p.entries.findIndex((e) => e.id === openedId) : 0;
   });
   if (a.mode === "shared")
     a.sharedOpened = sharedId ? unique.indexOf(sharedId) : 0;
+}
+export function replacePreparedExercise(store: Store, appointmentId: string, oldId: string, newId: string) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "planned" || !store.exercises.some((e) => e.id === newId)) return;
+  const targets = a.mode === "shared" ? a.participants : [a.participants[a.selected]];
+  if (targets.some((p) => p.entries.some((e) => e.id === newId))) return;
+  targets.forEach((p) => {
+    const index = p.entries.findIndex((e) => e.id === oldId);
+    if (index >= 0) p.entries[index] = entry(store, p.personId, newId, { setId: p.entries[index].setId });
+  });
+  prepareExercises(store, a.id, a.participants[a.selected].entries.map((e) => e.id));
 }
 
 export function correctResult(
@@ -416,7 +468,7 @@ export function correctResult(
       record.id === r.id &&
       record.date === s.date &&
       record.weight === r.weight &&
-      record.reps === r.reps
+      record.reps === r.reps && (record.equipment || "") === (r.equipment || "")
     ) {
       record.weight = weight.trim();
       record.reps = reps.trim();
@@ -671,6 +723,8 @@ export function validateStore(value: unknown): Store {
     /^\d{4}-\d{2}-\d{2}$/.test(x) &&
     !Number.isNaN(Date.parse(x)) &&
     new Date(x).toISOString().slice(0, 10) === x;
+  const equipment = (x: any) => x === undefined || ["", "barbell", "dumbbells"].includes(x);
+  const options = (x: any) => obj(x) && equipment(x.equipment) && (x.setId === undefined || (str(x.setId) && x.setId.length > 0));
   const s = value as Store;
   if (
     !obj(s) ||
@@ -690,6 +744,7 @@ export function validateStore(value: unknown): Store {
         str(e.id) &&
         (e.deleted === undefined || typeof e.deleted === "boolean") &&
         str(e.name) &&
+        equipment(e.equipment) &&
         str(e.group) &&
         str(e.note) &&
         list(
@@ -719,7 +774,9 @@ export function validateStore(value: unknown): Store {
         str(d.name) &&
         list(d.exercises, hasExercise) &&
         new Set(d.exercises).size === d.exercises.length,
+
     ) &&
+    p.days.every((d: Day) => d.options === undefined || (obj(d.options) && Object.entries(d.options).every(([id, value]) => d.exercises.includes(id) && options(value)))) &&
     unique(p.days) &&
     (p.days.length ? p.next < p.days.length : p.next === 0);
   if (
@@ -749,6 +806,7 @@ export function validateStore(value: unknown): Store {
             str(r.name) &&
             str(r.weight) &&
             str(r.reps) &&
+            equipment(r.equipment) &&
             (r.date === "" || date(r.date)),
         ),
     ) ||
@@ -763,6 +821,7 @@ export function validateStore(value: unknown): Store {
     obj(e) &&
     hasExercise(e.id) &&
     str(e.name) &&
+    options(e) &&
     str(e.weight) &&
     str(e.reps) &&
     typeof e.done === "boolean" &&

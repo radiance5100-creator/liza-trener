@@ -12,6 +12,34 @@ function load(name) {
 }
 const t=load('training');
 
+test('manual catalog exercises and day equipment survive preparation, replacement, shared copying and backups',()=>{
+ const s=fixture();s.exercises.push({...structuredClone(s.exercises[0]),id:'custom',name:'Моё упражнение',equipment:'dumbbells',history:[]});
+ const pg=s.people[0].programs[0],d=pg.days[0];d.options={e1:{equipment:'barbell',setId:'set'},e2:{equipment:'dumbbells',setId:'set'}};
+ const a=t.appointment(s,['self','c1'],'10:00');s.appointments.push(a);a.mode='shared';t.prepareDay(s,a.id,d.id);
+ assert.ok(a.participants.every(p=>p.entries[0].equipment==='barbell'&&p.entries[1].equipment==='dumbbells'&&p.entries.every(e=>e.setId==='set')));
+ t.replacePreparedExercise(s,a.id,'e2','custom');assert.ok(a.participants.every(p=>p.entries[1].id==='custom'&&p.entries[1].setId==='set'&&p.entries[1].equipment==='dumbbells'));
+ t.prepareExercises(s,a.id,['custom','e1']);assert.ok(a.participants.every(p=>p.entries.every(e=>e.setId==='set'&&!e.done&&!e.weight)));
+ const restored=t.migrate(JSON.parse(JSON.stringify(s)));t.startAppointment(restored,a.id);assert.ok(restored.appointments[0].participants.every(p=>p.entries[0].equipment==='dumbbells'&&p.entries[1].equipment==='barbell'&&p.entries.every(e=>e.setId==='set'&&!e.done)));
+ assert.equal(restored.people[0].programs[0].days[0].exercises[1],'e2');
+ restored.exercises.at(-1).equipment='invalid';assert.throws(()=>t.validateStore(restored));
+});
+
+test('sets and trisets are contiguous groups of at most three; removing links leaves no singleton',()=>{
+ const base=[{id:'a'},{id:'b'},{id:'c'},{id:'d'}];const pair=t.setExerciseGroup(base,1,true);assert.equal(base[0].setId,undefined);assert.equal(pair[0].setId,pair[1].setId);
+ const triple=t.setExerciseGroup(pair,2,true);assert.equal(triple[2].setId,triple[0].setId);const four=t.setExerciseGroup(triple,3,true);assert.equal(four[3].setId,undefined);
+ const split=t.setExerciseGroup(triple,1,false);assert.ok(split.every(e=>!e.setId));
+ const reordered=[pair[0],{id:'x'},pair[1]];t.normalizeSets(reordered);assert.ok(reordered.every(e=>!e.setId));
+});
+
+test('shared confirmation validates both rows atomically and records independent equipment snapshots once',()=>{
+ const s=fixture();s.exercises[0].equipment='barbell';const a=t.appointment(s,['self','c1'],'10:00');a.mode='shared';a.participants[1].entries=a.participants[0].entries.map(e=>t.entry(s,'c1',e.id,e));s.appointments.push(a);t.startAppointment(s,a.id);
+ a.participants[0].entries[0].weight='30';a.participants[0].entries[0].reps='8';a.participants[1].entries[0].weight='';t.confirmSharedEntry(a,0);assert.ok(a.participants.every(p=>!p.entries[0].done));
+ a.participants[1].entries[0].weight='10';a.participants[1].entries[0].reps='12';t.confirmSharedEntry(a,0);assert.ok(a.participants.every(p=>p.entries[0].done));assert.equal(a.sharedOpened,1);
+ t.finish(s,a.id,'self');t.finish(s,a.id,'c1');t.finish(s,a.id,'c1');assert.equal(s.sessions.filter(x=>x.id.startsWith(a.id)).length,2);
+ s.exercises[0].equipment='dumbbells';assert.equal(t.resultHistory(s,'c1','e1').at(-1).equipment,'barbell');assert.equal(t.entry(s,'c1','e1',{equipment:'barbell'}).weight,'10');assert.equal(t.entry(s,'c1','e1',{equipment:'dumbbells'}).weight,'');
+ const restored=t.migrate(JSON.parse(JSON.stringify(s)));assert.equal(restored.sessions.at(-1).results[0].equipment,'barbell');
+});
+
 test('custom avatar letters and emoji survive backups and client archival with old avatars still valid',()=>{
  for(const text of ['АЛ','💪','🧘‍♀️']) {
   const s=fixture(),p=s.people.find(p=>p.id==='c1');p.avatar={text,color:'#ffb162'};

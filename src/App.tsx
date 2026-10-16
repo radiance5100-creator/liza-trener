@@ -34,6 +34,7 @@ import { Preparation } from "./Preparation";
 import { Avatar, AvatarEditor } from "./Avatar";
 import { ProgressTable } from "./ProgressTable";
 import { ExerciseEditor } from "./ExerciseEditor";
+import { ExerciseOptions, SetBadge } from "./ExerciseOptions";
 import {
   loadTraining,
   saveTraining,
@@ -53,7 +54,12 @@ import {
   oneOffParticipant,
   addWorkoutExercises,
   confirmEntry,
+  confirmSharedEntry,
+  equipmentLabel,
+  normalizeSets,
+  setClass,
   prepareExercises,
+  replacePreparedExercise,
   prepareDay,
   prepareMode,
   prepareOneOff,
@@ -301,6 +307,7 @@ function Trainer({ initial }: { initial: Store }) {
   const person = store.people.find((p) => p.id === route.person);
   const program = person?.programs.find((p) => p.id === route.program);
   const day = program?.days.find((d) => d.id === route.day);
+  const dayItems = day?.exercises.map((id) => ({ id, name: ex(id).name, equipment: ex(id).equipment, ...day.options?.[id] })) ?? [];
   const current = store.appointments.find((a) => a.id === route.appointment);
   const activeParticipant = current?.participants[current.selected];
   const participantPosition = useRef(0);
@@ -352,13 +359,15 @@ function Trainer({ initial }: { initial: Store }) {
     window.scrollTo(0, 0);
   }
   function editProgram(fn: (program: Program) => void) {
-    mutate((next) =>
-      fn(
-        next.people
-          .find((p) => p.id === route.person)!
-          .programs.find((p) => p.id === route.program)!,
-      ),
-    );
+    mutate((next) => {
+      const pg = next.people.find((p) => p.id === route.person)!.programs.find((p) => p.id === route.program)!;
+      fn(pg);
+      pg.days.forEach((d) => {
+        if (!d.options) return;
+        const items = d.exercises.map((id) => ({ id, ...d.options?.[id] })); normalizeSets(items);
+        d.options = Object.fromEntries(items.map(({ id, ...options }) => [id, options]));
+      });
+    });
   }
   function newSchedule(quick = false, existing?: Appointment, selectedDate = date) {
     const sample =
@@ -523,7 +532,7 @@ function Trainer({ initial }: { initial: Store }) {
     const e = p.entries[index];
     if (!e) return null;
     const who = personById(p.personId);
-    const last = resultHistory(store, p.personId, e.id).at(-1);
+    const last = resultHistory(store, p.personId, e.id).filter((r) => (r.equipment || "") === (e.equipment || "")).at(-1);
     return (
       <div
         className={"result-form " + (e.done ? "confirmed" : "")}
@@ -619,7 +628,7 @@ function Trainer({ initial }: { initial: Store }) {
                 />
               </label>
             </div>
-            <button
+            {current!.mode !== "shared" && <button
               className={"btn full " + (e.done ? "soft" : "primary")}
               disabled={!e.weight.trim() || !e.reps.trim()}
               onClick={() => {
@@ -631,7 +640,7 @@ function Trainer({ initial }: { initial: Store }) {
             >
               <Check size={18} />
               {e.done ? "Результат подтверждён" : "Готово"}
-            </button>
+            </button>}
           </>
         )}
       </div>
@@ -651,6 +660,10 @@ function Trainer({ initial }: { initial: Store }) {
   function savePicker() {
     if (route.page === "prepare") {
       const ids = activeParticipant!.entries.map((e) => e.id);
+      if (modal.replace) {
+        mutate((next) => replacePreparedExercise(next, current!.id, modal.replace, modal.selected[0]));
+        setModal(null); flash("Упражнение заменено"); return;
+      }
       mutate((next) =>
         prepareExercises(
           next,
@@ -671,12 +684,17 @@ function Trainer({ initial }: { initial: Store }) {
             store,
             p.personId,
             modal.selected[0],
+            { setId: p.entries[modal.workout].setId },
           );
         });
       });
     } else
       editProgram((p) => {
         const d = p.days.find((d) => d.id === route.day)!;
+        if (modal.replace && d.options?.[modal.replace]) {
+          d.options[modal.selected[0]] = { setId: d.options[modal.replace].setId };
+          delete d.options[modal.replace];
+        }
         d.exercises = modal.replace
           ? d.exercises.map((id) =>
               id === modal.replace ? modal.selected[0] : id,
@@ -1078,7 +1096,7 @@ function Trainer({ initial }: { initial: Store }) {
                       </summary>
                       {s.results.map((r, i) => (
                         <div className="history-result" key={i}>
-                          <span>{r.name}</span>
+                          <span>{r.name}{equipmentLabel(r.equipment) && <small className="equipment-history">{equipmentLabel(r.equipment)}</small>}</span>
                           <b>
                             {r.done ? format(r.weight, r.reps) : "Пропущено"}
                           </b>
@@ -1186,7 +1204,7 @@ function Trainer({ initial }: { initial: Store }) {
             </p>
             <div className="edit-list">
               {day.exercises.map((id, index) => (
-                <article className="edit-row" data-index={index} key={id}>
+                <article className={"edit-row" + setClass(dayItems, index)} data-index={index} key={id}>
                   <button
                     className="drag-handle icon"
                     aria-label={"Переместить " + ex(id).name}
@@ -1266,6 +1284,9 @@ function Trainer({ initial }: { initial: Store }) {
                   >
                     <MoreHorizontal size={19} />
                   </button>
+                <ExerciseOptions items={dayItems} index={index} onChange={(items) => editProgram((pg) => {
+                    pg.days.find((d) => d.id === day.id)!.options = Object.fromEntries(items.map(({ id, equipment, setId }) => [id, { equipment, setId }]));
+                  })} />
                 </article>
               ))}
             </div>
@@ -1406,7 +1427,7 @@ function Trainer({ initial }: { initial: Store }) {
                   : e.done;
               return (
                 <article
-                  className={"workout-item " + (opened ? "opened" : "")}
+                  className={"workout-item " + (opened ? "opened" : "") + setClass(activeParticipant.entries, index)}
                   key={e.id}
                   data-workout-index={index}
                 >
@@ -1431,7 +1452,7 @@ function Trainer({ initial }: { initial: Store }) {
                       )}
                     </span>
                     <span>
-                      <strong>{e.name}</strong>
+                      <strong>{e.name}</strong><SetBadge items={activeParticipant.entries} index={index} />{equipmentLabel(e.equipment) && <small>{equipmentLabel(e.equipment)}</small>}
                       {done && (
                         <small>
                           {current.mode === "shared"
@@ -1452,6 +1473,11 @@ function Trainer({ initial }: { initial: Store }) {
                         ? current.participants
                         : [activeParticipant]
                       ).map((p) => rowResult(p, index))}
+                      {current.mode === "shared" && <button className="btn primary full" disabled={!current.participants.some((p) => p.status === "active") || current.participants.filter((p) => p.status === "active").some((p) => !p.entries[index]?.weight.trim() || !p.entries[index]?.reps.trim())} onClick={() => {
+                        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                        scrollAfterConfirm.current = true;
+                        changeAppointment((a) => confirmSharedEntry(a, index));
+                      }}><Check size={18} />Готово</button>}
                       <button
                         className="text replace-today"
                         disabled={
@@ -1596,6 +1622,13 @@ function Trainer({ initial }: { initial: Store }) {
               <Preparation
                 participant={activeParticipant}
                 exercises={store.exercises}
+                onOptions={(items) => changeAppointment((a) => {
+                  const targets = a.mode === "shared" ? a.participants : [a.participants[a.selected]];
+                  targets.forEach((p) => p.entries.forEach((e) => {
+                    const options = items.find((x) => x.id === e.id);
+                    if (options) { e.equipment = options.equipment; e.setId = options.setId; }
+                  }));
+                })}
                 onChange={(ids) =>
                   mutate((next) => prepareExercises(next, current.id, ids))
                 }
@@ -1640,6 +1673,11 @@ function Trainer({ initial }: { initial: Store }) {
                         0,
                         original.entries[index],
                       );
+                      const restoredGroup = original.entries[index].setId;
+                      if (restoredGroup) p.entries.forEach((e) => {
+                        if (!e.setId && original.entries.some((old) => old.id === e.id && old.setId === restoredGroup)) e.setId = restoredGroup;
+                      });
+                      normalizeSets(p.entries);
                       if (openedId)
                         p.opened = p.entries.findIndex(
                           (e) => e.id === openedId,
@@ -1675,7 +1713,9 @@ function Trainer({ initial }: { initial: Store }) {
         )}
         {route.page === "exercises" && (
           <>
-            {head("Упражнения", "Общая библиотека")}
+            {head("Упражнения", "Общая библиотека", undefined, undefined,
+              <button className="icon" aria-label="Добавить упражнение" onClick={() => setModal({ type: "exercise-preview", isNew: true, exercise: { id: uid(), name: "", group: "Ноги", kind: "", weight: "", reps: "", note: "", filmed: false, images: [null, null], history: [] } })}><Plus size={24} /></button>
+            )}
             <div className="tabs">
               {["Каталог", "Архив"].map((tab) => <button key={tab} className={exerciseTab === tab ? "selected" : ""} onClick={() => setExerciseTab(tab)}>{tab}</button>)}
             </div>
@@ -1720,7 +1760,7 @@ function Trainer({ initial }: { initial: Store }) {
                       <Picture exercise={e} />
                       <span>
                         <strong>{e.name}</strong>
-                        <small>{e.kind || e.group}</small>
+                        <small>{[e.kind || e.group, equipmentLabel(e.equipment)].filter(Boolean).join(" · ")}</small>
                       </span>
                       <ChevronRight size={18} />
                     </button>
@@ -1926,7 +1966,7 @@ function Trainer({ initial }: { initial: Store }) {
                   <p>{ex(modal.id).name}. Программа и прошлые результаты сохранятся.{current?.mode === "shared" ? " Упражнение будет убрано у обоих участников." : ""}</p>
                   <button className="btn destructive full" onClick={() => {
                     const appointmentId = current!.id, exerciseId = modal.id;
-                    const removed = (current!.mode === "shared" ? current!.participants : [activeParticipant!]).map((p) => ({ personId: p.personId, index: p.entries.findIndex((e) => e.id === exerciseId), entry: structuredClone(p.entries.find((e) => e.id === exerciseId)!) }));
+                    const removed = (current!.mode === "shared" ? current!.participants : [activeParticipant!]).map((p) => ({ personId: p.personId, index: p.entries.findIndex((e) => e.id === exerciseId), entry: structuredClone(p.entries.find((e) => e.id === exerciseId)!), groupMembers: p.entries.filter((e) => e.setId && e.setId === p.entries.find((x) => x.id === exerciseId)?.setId).map((e) => e.id) }));
                     setUndo(() => (next: Store) => {
                       const a = next.appointments.find((a) => a.id === appointmentId);
                       if (!a || a.status !== "active") return;
@@ -1937,6 +1977,8 @@ function Trainer({ initial }: { initial: Store }) {
                         const openedId = p.entries[p.opened]?.id;
                         const sharedId = a.participants[0].entries[a.sharedOpened]?.id;
                         p.entries.splice(Math.min(r.index, p.entries.length), 0, r.entry);
+                        if (r.entry.setId) p.entries.forEach((e) => { if (!e.setId && r.groupMembers.includes(e.id)) e.setId = r.entry.setId; });
+                        normalizeSets(p.entries);
                         if (openedId) p.opened = p.entries.findIndex((e) => e.id === openedId);
                         if (a.mode === "shared" && p === a.participants[0] && sharedId) a.sharedOpened = p.entries.findIndex((e) => e.id === sharedId);
                       });
@@ -2007,7 +2049,7 @@ function Trainer({ initial }: { initial: Store }) {
                             p.dayId = undefined;
                             p.dayName = source.dayName;
                             p.entries = source.entries.map((e) =>
-                              entry(store, p.personId, e.id),
+                              entry(store, p.personId, e.id, e),
                             );
                           }
                         });
@@ -2719,6 +2761,7 @@ function Trainer({ initial }: { initial: Store }) {
                     className="menu-item danger"
                     onClick={() => {
                       const removedId = modal.id,
+                        originalOptions = structuredClone(day!.options ?? {}),
                         dayId = day!.id,
                         programId = program!.id,
                         personId = person!.id,
@@ -2728,12 +2771,21 @@ function Trainer({ initial }: { initial: Store }) {
                           .find((p) => p.id === personId)
                           ?.programs.find((p) => p.id === programId)
                           ?.days.find((d) => d.id === dayId);
-                        if (target && !target.exercises.includes(removedId))
+                        if (target && !target.exercises.includes(removedId)) {
                           target.exercises.splice(
                             Math.min(index, target.exercises.length),
                             0,
                             removedId,
                           );
+                          target.options ??= {};
+                          target.options[removedId] = originalOptions[removedId] ?? {};
+                          const group = originalOptions[removedId]?.setId;
+                          if (group) target.exercises.forEach((id) => {
+                            if (originalOptions[id]?.setId === group && !target.options![id]?.setId) target.options![id] = { ...target.options![id], setId: group };
+                          });
+                          const items = target.exercises.map((id) => ({ id, ...target.options?.[id] })); normalizeSets(items);
+                          target.options = Object.fromEntries(items.map(({ id, ...options }) => [id, options]));
+                        }
                       });
                       editProgram((pg) => {
                         const d = pg.days.find((d) => d.id === route.day)!;
@@ -2817,7 +2869,7 @@ function Trainer({ initial }: { initial: Store }) {
                         <span>
                           {r.date ? labelDate(r.date) : "Исходное значение"}
                         </span>
-                        <b>{format(r.weight, r.reps)}</b>
+                        <b>{format(r.weight, r.reps)}{equipmentLabel(r.equipment) && <small className="equipment-history">{equipmentLabel(r.equipment)}</small>}</b>
                       </div>
                     ))}
                 </>
@@ -2825,9 +2877,11 @@ function Trainer({ initial }: { initial: Store }) {
               {modal.type === "exercise-preview" && (
                 <>
                 <ExerciseEditor
-                  exercise={ex(modal.id)}
+                  isNew={modal.isNew}
+                  exercise={modal.isNew ? modal.exercise : ex(modal.id)}
                   onSave={(exercise) => {
                     mutate((next) => {
+                      if (modal.isNew) { next.exercises.push(exercise); return; }
                       next.exercises = next.exercises.map((e) =>
                         e.id === exercise.id ? exercise : e,
                       );
@@ -2835,14 +2889,14 @@ function Trainer({ initial }: { initial: Store }) {
                     setModal(null);
                     flash("Упражнение сохранено");
                   }}
-                  onOpen={(index) => setLightbox({ id: modal.id, index })}
+                  onOpen={modal.isNew ? undefined : (index) => setLightbox({ id: modal.id, index })}
                 />
-                {ex(modal.id).deleted ? <button className="btn primary full" onClick={() => {
+                {!modal.isNew && (ex(modal.id).deleted ? <button className="btn primary full" onClick={() => {
                   const id = modal.id;
                   mutate((next) => { delete next.exercises.find((e) => e.id === id)!.deleted; });
                   setModal(null); flash("Упражнение возвращено в каталог");
                 }}><ArrowLeftRight size={18} />Вернуть в каталог</button> :
-                <button className="btn outline full" onClick={() => setModal({ type: "delete-catalog-exercise", id: modal.id })}><Archive size={18} />В архив</button>}
+                <button className="btn outline full" onClick={() => setModal({ type: "delete-catalog-exercise", id: modal.id })}><Archive size={18} />В архив</button>)}
                 </>
               )}
               {modal.type === "import" && importValue && (
