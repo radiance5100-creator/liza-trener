@@ -12,6 +12,29 @@ function load(name) {
 }
 const t=load('training');
 
+test('workout comments survive reload, synchronize a finished partner and remain editable until completion',()=>{
+ const s=fixture(),a=t.appointment(s,['self','c1'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);
+ t.setWorkoutComment(s,a.id,'Самочувствие хорошее\nСледить за техникой');
+ const restored=t.migrate(JSON.parse(JSON.stringify(s)));assert.equal(restored.appointments[0].comment,a.comment);
+ t.finish(s,a.id,'self');t.setWorkoutComment(s,a.id,'Обновлённый комментарий');assert.equal(s.sessions.find(x=>x.id===a.id+':self').comment,'Обновлённый комментарий');
+ t.finish(s,a.id,'c1');assert.equal(s.sessions.find(x=>x.id===a.id+':c1').comment,'Обновлённый комментарий');
+ t.setWorkoutComment(s,a.id,'Не менять завершённое');assert.equal(a.comment,'Обновлённый комментарий');
+ assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);
+ const bad=structuredClone(s);bad.sessions.at(-1).comment=12;assert.throws(()=>t.validateStore(bad));
+});
+
+test('optional exercises survive program snapshots, replacement and completion without fabricated history',()=>{
+ const s=fixture(),d=s.people[0].programs[0].days[0];d.options={e1:{optional:false},e2:{optional:true,equipment:'dumbbells'}};
+ s.exercises.push({...structuredClone(s.exercises[1]),id:'extra',name:'Дополнительное'});
+ const a=t.appointment(s,['self'],'10:00');s.appointments.push(a);t.prepareDay(s,a.id,d.id);assert.equal(a.participants[0].entries[1].optional,true);
+ t.replacePreparedExercise(s,a.id,'e2','extra');assert.equal(a.participants[0].entries[1].optional,true);
+ const restored=t.migrate(JSON.parse(JSON.stringify(s)));t.startAppointment(restored,a.id);const p=restored.appointments[0].participants[0];assert.equal(p.entries[1].optional,true);
+ p.entries[0].weight='20';p.entries[0].reps='8';t.confirmEntry(restored.appointments[0],'self',0);t.finish(restored,a.id,'self');
+ const results=restored.sessions.find(x=>x.id===a.id+':self').results;assert.equal(results[1].optional,true);assert.equal(results[1].done,false);assert.equal(results[1].weight,'');assert.equal(results[1].reps,'');assert.equal(t.resultHistory(restored,'self','extra').length,0);
+ assert.equal(s.people[0].programs[0].days[0].exercises[1],'e2');
+ const bad=structuredClone(restored);bad.people[0].programs[0].days[0].options.e2.optional='yes';assert.throws(()=>t.validateStore(bad));
+});
+
 test('manual catalog exercises and day equipment survive preparation, replacement, shared copying and backups',()=>{
  const s=fixture();s.exercises.push({...structuredClone(s.exercises[0]),id:'custom',name:'Моё упражнение',equipment:'dumbbells',history:[]});
  const pg=s.people[0].programs[0],d=pg.days[0];d.options={e1:{equipment:'barbell',setId:'set'},e2:{equipment:'dumbbells',setId:'set'}};

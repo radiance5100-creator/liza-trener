@@ -14,6 +14,9 @@ export function ExerciseOptions({ items, index, onChange }: {
   const sameGroup = !!item.setId && item.setId === previous?.setId;
   const full = !!previous?.setId && items.filter((e) => e.setId === previous.setId && e.id !== item.id).length >= 3;
   return <div className="exercise-options">
+    <label className="optional-toggle"><input type="checkbox" aria-label={"Дополнительное: " + item.name} checked={!!item.optional} onChange={(event) => {
+      const next = structuredClone(items); next[index].optional = event.target.checked; onChange(next);
+    }} />Дополнительное · если останется время</label>
     <SetBadge items={items} index={index} />
     <label>Оборудование<select aria-label={"Оборудование: " + item.name} value={item.equipment ?? ""} onChange={(event) => {
       const next = structuredClone(items); next[index].equipment = event.target.value as Options["equipment"]; onChange(next);

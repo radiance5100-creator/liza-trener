@@ -1273,6 +1273,14 @@ main {
 .set-badge { display: block; color: var(--clay) !important; font-size: 10px; font-weight: 700; flex-basis: 100%; }
 .equipment-history { display: block; font-size: 10px; font-weight: 500; color: var(--muted); margin-top: 3px; }
 .history-card .history-exercise-number { display: inline-block; margin-right: 8px; color: var(--muted); font-size: 10px; }
+.optional-exercise { background: #efefec !important; }
+.exercise-options .optional-toggle { flex-basis: 100%; display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 12px; }
+.optional-toggle input { width: 20px; height: 20px; accent-color: var(--navy); flex-shrink: 0; }
+.optional-badge { color: #676b70 !important; }
+.workout-comment-field { margin: 18px 0; }
+.workout-comment-field textarea { width: 100%; min-height: 88px; resize: vertical; font-size: 16px; }
+.workout-comment-history { margin-top: 14px; padding: 12px; background: #f1ede5; border-radius: 10px; }
+.workout-comment-history p { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .status-line {
   display: flex;
   align-items: center;

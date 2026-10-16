@@ -1,13 +1,14 @@
 import { initialExercises, type Exercise } from "./seed";
 import { validateData, type Result } from "./storage";
 
-export type ExerciseOptions = { equipment?: "" | "barbell" | "dumbbells"; setId?: string };
+export type ExerciseOptions = { equipment?: "" | "barbell" | "dumbbells"; setId?: string; optional?: boolean };
 export type Day = { id: string; name: string; exercises: string[]; options?: Record<string, ExerciseOptions> };
 export const equipmentLabel = (value?: string) => value === "barbell" ? "Со штангой" : value === "dumbbells" ? "С гантелями" : "";
-export function setClass(items: { setId?: string }[], index: number) {
+export function setClass(items: { setId?: string; optional?: boolean }[], index: number) {
   const id = items[index]?.setId;
-  if (!id) return "";
-  return " grouped-exercise" + (items[index - 1]?.setId === id ? " group-middle" : " group-start") + (items[index + 1]?.setId === id ? "" : " group-end");
+  const optional = items[index]?.optional ? " optional-exercise" : "";
+  if (!id) return optional;
+  return optional + " grouped-exercise" + (items[index - 1]?.setId === id ? " group-middle" : " group-start") + (items[index + 1]?.setId === id ? "" : " group-end");
 }
 export function normalizeSets<T extends { id: string; setId?: string }>(items: T[]) {
   for (let i = 0; i < items.length;) {
@@ -76,6 +77,7 @@ export type Participant = {
   scroll: number;
 };
 export type Appointment = {
+  comment?: string;
   id: string;
   date: string;
   time: string;
@@ -89,6 +91,7 @@ export type Appointment = {
   awaitingSchedule?: boolean;
 };
 export type Session = {
+  comment?: string;
   id: string;
   personId: string;
   date: string;
@@ -186,6 +189,7 @@ export function entry(store: Store, personId: string, id: string, options?: Exer
     previousDate: r?.date ?? "",
     equipment: equipment ?? "",
     ...(options?.setId ? { setId: options.setId } : {}),
+    ...(options?.optional !== undefined ? { optional: options.optional } : {}),
   };
 }
 export function participant(
@@ -443,7 +447,7 @@ export function replacePreparedExercise(store: Store, appointmentId: string, old
   if (targets.some((p) => p.entries.some((e) => e.id === newId))) return;
   targets.forEach((p) => {
     const index = p.entries.findIndex((e) => e.id === oldId);
-    if (index >= 0) p.entries[index] = entry(store, p.personId, newId, { setId: p.entries[index].setId });
+    if (index >= 0) p.entries[index] = entry(store, p.personId, newId, { setId: p.entries[index].setId, optional: p.entries[index].optional });
   });
   prepareExercises(store, a.id, a.participants[a.selected].entries.map((e) => e.id));
 }
@@ -533,6 +537,12 @@ export function prepareMode(
     );
   }
 }
+export function setWorkoutComment(store: Store, appointmentId: string, comment: string) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "active") return;
+  a.comment = comment;
+  store.sessions.filter((s) => a.participants.some((p) => s.id === a.id + ":" + p.personId)).forEach((s) => { s.comment = comment; });
+}
 export function finish(
   store: Store,
   appointmentId: string,
@@ -549,6 +559,7 @@ export function finish(
     const id = a.id + ":" + personId;
     if (!store.sessions.some((s) => s.id === id)) {
       store.sessions.push({
+        ...(a.comment !== undefined ? { comment: a.comment } : {}),
         id,
         personId,
         date: a.date,
@@ -724,7 +735,7 @@ export function validateStore(value: unknown): Store {
     !Number.isNaN(Date.parse(x)) &&
     new Date(x).toISOString().slice(0, 10) === x;
   const equipment = (x: any) => x === undefined || ["", "barbell", "dumbbells"].includes(x);
-  const options = (x: any) => obj(x) && equipment(x.equipment) && (x.setId === undefined || (str(x.setId) && x.setId.length > 0));
+  const options = (x: any) => obj(x) && equipment(x.equipment) && (x.setId === undefined || (str(x.setId) && x.setId.length > 0)) && (x.optional === undefined || typeof x.optional === "boolean");
   const s = value as Store;
   if (
     !obj(s) ||
@@ -834,6 +845,7 @@ export function validateStore(value: unknown): Store {
         obj(x) &&
         str(x.id) &&
         person(x.personId) &&
+        (x.comment === undefined || str(x.comment)) &&
         date(x.date) &&
         str(x.dayName) &&
         list(x.results, validEntry),
@@ -848,6 +860,7 @@ export function validateStore(value: unknown): Store {
       (a) =>
         obj(a) &&
         str(a.id) &&
+        (a.comment === undefined || str(a.comment)) &&
         date(a.date) &&
         (a.time === "" || /^([01]\d|2[0-3]):[0-5]\d$/.test(a.time)) &&
         (a.duration === null ||

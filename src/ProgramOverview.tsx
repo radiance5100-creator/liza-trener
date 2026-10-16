@@ -17,7 +17,7 @@ export function ProgramOverview({ program, exercises, onDay }: {
         </th>)}</tr></thead>
         <tbody>{Array.from({ length: Math.max(1, rows) }, (_, index) => <tr key={index}>
           {program.days.map((d) => <td key={d.id} className={setClass(d.exercises.map((id) => ({ ...d.options?.[id] })), index)}>
-            {d.exercises[index] ? <><small>{index + 1}</small><span>{exercises.find((e) => e.id === d.exercises[index])?.name ?? "Упражнение"}</span><small>{equipmentLabel(d.options?.[d.exercises[index]]?.equipment ?? exercises.find((e) => e.id === d.exercises[index])?.equipment)}</small></> : <span className="muted">—</span>}
+            {d.exercises[index] ? <><small>{index + 1}</small><span>{exercises.find((e) => e.id === d.exercises[index])?.name ?? "Упражнение"}</span>{d.options?.[d.exercises[index]]?.optional && <small>Дополнительное</small>}<small>{equipmentLabel(d.options?.[d.exercises[index]]?.equipment ?? exercises.find((e) => e.id === d.exercises[index])?.equipment)}</small></> : <span className="muted">—</span>}
           </td>)}
         </tr>)}</tbody>
       </table>

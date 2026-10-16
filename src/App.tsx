@@ -57,6 +57,7 @@ import {
   equipmentLabel,
   normalizeSets,
   setClass,
+  setWorkoutComment,
   prepareExercises,
   replacePreparedExercise,
   prepareDay,
@@ -684,7 +685,7 @@ function Trainer({ initial }: { initial: Store }) {
             store,
             p.personId,
             modal.selected[0],
-            { setId: p.entries[modal.workout].setId },
+            { setId: p.entries[modal.workout].setId, optional: p.entries[modal.workout].optional },
           );
         });
       });
@@ -692,7 +693,7 @@ function Trainer({ initial }: { initial: Store }) {
       editProgram((p) => {
         const d = p.days.find((d) => d.id === route.day)!;
         if (modal.replace && d.options?.[modal.replace]) {
-          d.options[modal.selected[0]] = { setId: d.options[modal.replace].setId };
+          d.options[modal.selected[0]] = { setId: d.options[modal.replace].setId, optional: d.options[modal.replace].optional };
           delete d.options[modal.replace];
         }
         d.exercises = modal.replace
@@ -1079,9 +1080,10 @@ function Trainer({ initial }: { initial: Store }) {
                           {s.results.filter((r) => r.done).length} упр.
                         </span>
                       </summary>
+                      {s.comment?.trim() && <div className="workout-comment-history"><small>Комментарий к тренировке</small><p>{s.comment}</p></div>}
                       {s.results.map((r, i) => (
                         <div className="history-result" key={i}>
-                          <span><small className="history-exercise-number">{String(i + 1).padStart(2, "0")}</small>{r.name}{equipmentLabel(r.equipment) && <small className="equipment-history">{equipmentLabel(r.equipment)}</small>}</span>
+                          <span><small className="history-exercise-number">{String(i + 1).padStart(2, "0")}</small>{r.name}{r.optional && <small className="equipment-history">Дополнительное</small>}{equipmentLabel(r.equipment) && <small className="equipment-history">{equipmentLabel(r.equipment)}</small>}</span>
                           <b>
                             {r.done ? format(r.weight, r.reps) : "Пропущено"}
                           </b>
@@ -1270,7 +1272,7 @@ function Trainer({ initial }: { initial: Store }) {
                     <MoreHorizontal size={19} />
                   </button>
                 <ExerciseOptions items={dayItems} index={index} onChange={(items) => editProgram((pg) => {
-                    pg.days.find((d) => d.id === day.id)!.options = Object.fromEntries(items.map(({ id, equipment, setId }) => [id, { equipment, setId }]));
+                    pg.days.find((d) => d.id === day.id)!.options = Object.fromEntries(items.map(({ id, equipment, setId, optional }) => [id, { equipment, setId, optional }]));
                   })} />
                 </article>
               ))}
@@ -1438,6 +1440,7 @@ function Trainer({ initial }: { initial: Store }) {
                     </span>
                     <span>
                       <strong>{e.name}</strong><SetBadge items={activeParticipant.entries} index={index} />{equipmentLabel(e.equipment) && <small>{equipmentLabel(e.equipment)}</small>}
+                      {e.optional && <small className="optional-badge">Дополнительное · если останется время</small>}
                       {done && (
                         <small>
                           {current.mode === "shared"
@@ -1490,13 +1493,17 @@ function Trainer({ initial }: { initial: Store }) {
                 </article>
               );
             })}
+            <label className="field workout-comment-field"><span>Комментарий к тренировке</span>
+              <textarea rows={3} placeholder="Добавить комментарий…" value={current.comment ?? ""}
+                onChange={(event) => mutate((next) => setWorkoutComment(next, current.id, event.target.value))} />
+            </label>
             <div className="sticky-action workout-finish">
               <button
                 className="btn primary full"
                 disabled={activeParticipant.status !== "active"}
                 onClick={() =>
                   activeParticipant.entries.length > 0 &&
-                  activeParticipant.entries.every((e) => e.done)
+                  activeParticipant.entries.every((e) => e.done || e.optional)
                     ? finishParticipant(activeParticipant.personId)
                     : setModal({
                         type: "finish",
@@ -1611,7 +1618,7 @@ function Trainer({ initial }: { initial: Store }) {
                   const targets = a.mode === "shared" ? a.participants : [a.participants[a.selected]];
                   targets.forEach((p) => p.entries.forEach((e) => {
                     const options = items.find((x) => x.id === e.id);
-                    if (options) { e.equipment = options.equipment; e.setId = options.setId; }
+                    if (options) { e.equipment = options.equipment; e.setId = options.setId; e.optional = options.optional; }
                   }));
                 })}
                 onChange={(ids) =>
@@ -2006,6 +2013,7 @@ function Trainer({ initial }: { initial: Store }) {
                     }
                     onClick={() => {
                       const a: Appointment = {
+                        ...(modal.comment !== undefined ? { comment: modal.comment } : {}),
                         id: modal.id,
                         date: modal.quick ? today : modal.date,
                         time: modal.time,
