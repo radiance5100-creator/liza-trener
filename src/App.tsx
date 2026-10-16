@@ -32,7 +32,6 @@ import { Gallery, PhotoGrid } from "./Gallery";
 import { ProgramOverview } from "./ProgramOverview";
 import { Preparation } from "./Preparation";
 import { Avatar, AvatarEditor } from "./Avatar";
-import { ProgressTable } from "./ProgressTable";
 import { ExerciseEditor } from "./ExerciseEditor";
 import { ExerciseOptions, SetBadge } from "./ExerciseOptions";
 import {
@@ -307,6 +306,7 @@ function Trainer({ initial }: { initial: Store }) {
   const person = store.people.find((p) => p.id === route.person);
   const program = person?.programs.find((p) => p.id === route.program);
   const day = program?.days.find((d) => d.id === route.day);
+  const personSessions = store.sessions.filter((s) => s.personId === person?.id).slice().reverse().sort((a, b) => b.date.localeCompare(a.date));
   const dayItems = day?.exercises.map((id) => ({ id, name: ex(id).name, equipment: ex(id).equipment, ...day.options?.[id] })) ?? [];
   const current = store.appointments.find((a) => a.id === route.appointment);
   const activeParticipant = current?.participants[current.selected];
@@ -1003,18 +1003,6 @@ function Trainer({ initial }: { initial: Store }) {
             </div>
             {personTab === "История" && (
               <>
-                <section className="surface">
-                  <div className="section-title">
-                    <h2>Результаты</h2>
-                    <Dumbbell size={18} />
-                  </div>
-                  <p className="muted small-text">Последние 3 выполнения каждого упражнения</p>
-                  <ProgressTable
-                    store={store}
-                    personId={person.id}
-                    onHistory={(exercise) => setModal({ type: "history", person: person.id, exercise })}
-                  />
-                </section>
                 <div className="attendance-line" aria-label="Посещаемость">
                   <button className="icon" aria-label="Предыдущий месяц посещаемости"
                     onClick={() => setMonth(dayOffset(month + "-01", -1).slice(0, 7))}>
@@ -1079,15 +1067,12 @@ function Trainer({ initial }: { initial: Store }) {
                 <div className="section-title">
                   <h2>Занятия</h2>
                 </div>
-                {store.sessions
-                  .filter((s) => s.personId === person.id)
-                  .slice()
-                  .reverse()
-                  .map((s) => (
-                    <details className="history-card" key={s.id}>
+                {!personSessions.length && <p className="muted">Завершённых тренировок пока нет.</p>}
+                {personSessions.map((s, sessionIndex) => (
+                    <details className="history-card" key={person.id + s.id} open={sessionIndex === 0}>
                       <summary>
                         <span>
-                          <small>{labelDate(s.date)}</small>
+                          <small>{sessionIndex === 0 ? "Последняя тренировка · " : ""}{labelDate(s.date)}</small>
                           <strong>{s.dayName}</strong>
                         </span>
                         <span className="badge">
@@ -1096,7 +1081,7 @@ function Trainer({ initial }: { initial: Store }) {
                       </summary>
                       {s.results.map((r, i) => (
                         <div className="history-result" key={i}>
-                          <span>{r.name}{equipmentLabel(r.equipment) && <small className="equipment-history">{equipmentLabel(r.equipment)}</small>}</span>
+                          <span><small className="history-exercise-number">{String(i + 1).padStart(2, "0")}</small>{r.name}{equipmentLabel(r.equipment) && <small className="equipment-history">{equipmentLabel(r.equipment)}</small>}</span>
                           <b>
                             {r.done ? format(r.weight, r.reps) : "Пропущено"}
                           </b>

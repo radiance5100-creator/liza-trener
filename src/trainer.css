@@ -1272,6 +1272,7 @@ main {
 .grouped-exercise:not(.group-end) { border-bottom-left-radius: 0; margin-bottom: 0; }
 .set-badge { display: block; color: var(--clay) !important; font-size: 10px; font-weight: 700; flex-basis: 100%; }
 .equipment-history { display: block; font-size: 10px; font-weight: 500; color: var(--muted); margin-top: 3px; }
+.history-card .history-exercise-number { display: inline-block; margin-right: 8px; color: var(--muted); font-size: 10px; }
 .status-line {
   display: flex;
   align-items: center;
