@@ -3,7 +3,7 @@ import { GripVertical, Replace, Trash2, Plus, MoreHorizontal } from "lucide-reac
 import type { ReactNode } from "react";
 import type { Exercise } from "./seed";
 import type { Participant } from "./training";
-import { ExerciseOptions, type OptionItem } from "./ExerciseOptions";
+import { ExerciseOptions, OptionalToggle, type OptionItem } from "./ExerciseOptions";
 import { setClass } from "./training";
 
 export function Preparation({
@@ -107,6 +107,7 @@ export function Preparation({
                   Заменить
                 </button>
               </div>
+              <OptionalToggle items={participant.entries} index={i} onChange={onOptions} />
               <button
                 className="icon"
                 aria-label={`Удалить: ${e.name}`}

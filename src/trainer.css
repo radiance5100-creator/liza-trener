@@ -1291,6 +1291,8 @@ main {
 .context-person { flex-wrap: wrap; }
 .context-person > span, .latest-result-editor > small { min-width: 0; overflow-wrap: anywhere; }
 .optional-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.optional-control { min-width: 44px; min-height: 44px; padding: 4px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--muted); font-size: 11px; flex-shrink: 0; }
+.optional-control[aria-pressed="true"] { background: #dfe0dd; border-color: #979b9d; color: var(--navy); font-weight: 700; }
 .status-line {
   display: flex;
   align-items: center;

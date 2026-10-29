@@ -1,6 +1,12 @@
 import { setExerciseGroup, equipmentLabel, type ExerciseOptions as Options } from "./training";
 
 export type OptionItem = Options & { id: string; name: string };
+export function OptionalToggle({ items, index, onChange }: { items: OptionItem[]; index: number; onChange: (items: OptionItem[]) => void }) {
+  const item = items[index];
+  return <button className="optional-control" aria-label={"Дополнительное: " + item.name} aria-pressed={!!item.optional} title="Дополнительное упражнение" onClick={() => {
+    const next = structuredClone(items); next[index].optional = !item.optional; onChange(next);
+  }}>Доп</button>;
+}
 export function SetBadge({ items, index }: { items: OptionItem[]; index: number }) {
   const id = items[index].setId;
   if (!id || items[index - 1]?.setId === id) return null;
@@ -14,10 +20,9 @@ export function ExerciseOptions({ items, index, onChange, compact = false, showA
   const item = items[index], previous = items[index - 1];
   const sameGroup = !!item.setId && item.setId === previous?.setId;
   const full = !!previous?.setId && items.filter((e) => e.setId === previous.setId && e.id !== item.id).length >= 3;
+  if (compact && !item.setId && !equipmentLabel(item.equipment)) return null;
   return <div className="exercise-options">
-    {showAdditional && <label className="optional-toggle"><input type="checkbox" aria-label={"Дополнительное: " + item.name} checked={!!item.optional} onChange={(event) => {
-      const next = structuredClone(items); next[index].optional = event.target.checked; onChange(next);
-    }} />Дополнительное · если останется время</label>}
+    {showAdditional && !compact && <OptionalToggle items={items} index={index} onChange={onChange} />}
     <SetBadge items={items} index={index} />
     {compact && equipmentLabel(item.equipment) && <small className="equipment-history">{equipmentLabel(item.equipment)}</small>}
     {!compact && <>

@@ -3,7 +3,7 @@ import { validateData, type Result } from "./storage";
 
 export type ExerciseOptions = { equipment?: "" | "barbell" | "dumbbells"; setId?: string; optional?: boolean };
 export type Day = { id: string; name: string; exercises: string[]; options?: Record<string, ExerciseOptions> };
-export const equipmentLabel = (value?: string) => value === "barbell" ? "Со штангой" : value === "dumbbells" ? "С гантелями" : "";
+export const equipmentLabel = (value?: string) => value === "barbell" ? "Штанга" : value === "dumbbells" ? "Гантели" : "";
 export function setClass(items: { setId?: string; optional?: boolean }[], index: number) {
   const id = items[index]?.setId;
   const optional = items[index]?.optional ? " optional-exercise" : "";

@@ -33,7 +33,7 @@ import { ProgramOverview } from "./ProgramOverview";
 import { Preparation } from "./Preparation";
 import { Avatar, AvatarEditor } from "./Avatar";
 import { ExerciseEditor } from "./ExerciseEditor";
-import { ExerciseOptions, SetBadge, type OptionItem } from "./ExerciseOptions";
+import { ExerciseOptions, OptionalToggle, SetBadge, type OptionItem } from "./ExerciseOptions";
 import { LatestResults } from "./LatestResults";
 import {
   loadTraining,
@@ -1268,6 +1268,9 @@ function Trainer({ initial }: { initial: Store }) {
                     <strong>{ex(id).name}</strong>
                     <small>{ex(id).group}</small>
                   </div>
+                  <OptionalToggle items={dayItems} index={index} onChange={(items) => editProgram((pg) => {
+                    pg.days.find((d) => d.id === day.id)!.options = Object.fromEntries(items.map(({ id, equipment, setId, optional }) => [id, { equipment, setId, optional }]));
+                  })} />
                   <button
                     className="icon edit-row-replace"
                     aria-label={"Заменить " + ex(id).name}

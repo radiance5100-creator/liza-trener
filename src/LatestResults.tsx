@@ -8,7 +8,7 @@ function ResultFields({ result, personName, exerciseName, onSave }: {
   const changed = weight !== result.weight || reps !== result.reps;
   function save() { try { onSave(weight, reps); setError(""); } catch (e) { setError((e as Error).message); } }
   return <div className="latest-result-editor">
-    <small>{personName} · {result.date ? "Последний результат" : "Исходное значение"} · {equipmentLabel(result.equipment) || "Без уточнения оборудования"}</small>
+    <small>{personName}{equipmentLabel(result.equipment) ? " · " + equipmentLabel(result.equipment) : ""}</small>
     <div className="latest-result-fields" onKeyDown={(event) => { if (event.key === "Enter" && changed && weight.trim() && reps.trim()) { event.preventDefault(); save(); } }}>
       <label>Вес / нагрузка<input aria-label={`Последний вес: ${personName}, ${exerciseName}`} inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} /></label>
       <label>Повторы<input aria-label={`Последние повторы: ${personName}, ${exerciseName}`} inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value)} /></label>
@@ -22,10 +22,11 @@ export function LatestResults({ store, people, exerciseId, equipment, onSave }: 
   onSave: (personId: string, weight: string, reps: string, equipment?: ExerciseOptions["equipment"]) => void;
 }) {
   const exerciseName = store.exercises.find((e) => e.id === exerciseId)?.name ?? "Упражнение";
-  return <div className="latest-results">{people.map((id) => {
+  const rows = people.map((id) => {
     const person = store.people.find((p) => p.id === id); if (!person) return null;
     const history = resultHistory(store, id, exerciseId);
     const result = history.filter((r) => (r.equipment || "") === (equipment || "")).at(-1) ?? history.filter((r) => !r.equipment).at(-1);
-    return result ? <ResultFields key={JSON.stringify([id, exerciseId, equipment, result.date, result.weight, result.reps])} result={result} personName={person.name} exerciseName={exerciseName} onSave={(weight, reps) => onSave(id, weight, reps, result.equipment)} /> : <small className="muted" key={id}>{person.name} · сохранённых результатов пока нет</small>;
-  })}</div>;
+    return result ? <ResultFields key={JSON.stringify([id, exerciseId, equipment, result.date, result.weight, result.reps])} result={result} personName={person.name} exerciseName={exerciseName} onSave={(weight, reps) => onSave(id, weight, reps, result.equipment)} /> : null;
+  });
+  return rows.some(Boolean) ? <div className="latest-results">{rows}</div> : null;
 }
