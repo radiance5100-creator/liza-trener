@@ -33,7 +33,8 @@ import { ProgramOverview } from "./ProgramOverview";
 import { Preparation } from "./Preparation";
 import { Avatar, AvatarEditor } from "./Avatar";
 import { ExerciseEditor } from "./ExerciseEditor";
-import { ExerciseOptions, SetBadge } from "./ExerciseOptions";
+import { ExerciseOptions, SetBadge, type OptionItem } from "./ExerciseOptions";
+import { LatestResults } from "./LatestResults";
 import {
   loadTraining,
   saveTraining,
@@ -58,6 +59,12 @@ import {
   normalizeSets,
   setClass,
   setWorkoutComment,
+  linkProgramPartner,
+  setProgramActive,
+  syncPairedProgram,
+  syncWorkoutPrograms,
+  replaceWorkoutExercise,
+  correctLatestResult,
   prepareExercises,
   replacePreparedExercise,
   prepareDay,
@@ -368,6 +375,21 @@ function Trainer({ initial }: { initial: Store }) {
         const items = d.exercises.map((id) => ({ id, ...d.options?.[id] })); normalizeSets(items);
         d.options = Object.fromEntries(items.map(({ id, ...options }) => [id, options]));
       });
+      syncPairedProgram(next, route.person!, pg.id);
+    });
+  }
+  function latestResults(exerciseId: string, equipment: Exercise["equipment"], people: string[]) {
+    return <LatestResults store={store} people={people} exerciseId={exerciseId} equipment={equipment} onSave={(personId, weight, reps, actualEquipment) => {
+      const next = structuredClone(store); correctLatestResult(next, personId, exerciseId, actualEquipment, weight, reps); setStore(next); flash("Последний результат исправлен");
+    }} />;
+  }
+  function changePreparationOptions(items: OptionItem[]) {
+    changeAppointment((a) => {
+      const targets = a.mode === "shared" ? a.participants : [a.participants[a.selected]];
+      targets.forEach((p) => p.entries.forEach((e) => {
+        const options = items.find((x) => x.id === e.id);
+        if (options) { e.equipment = options.equipment; e.setId = options.setId; e.optional = options.optional; }
+      }));
     });
   }
   function newSchedule(quick = false, existing?: Appointment, selectedDate = date) {
@@ -457,6 +479,7 @@ function Trainer({ initial }: { initial: Store }) {
     const next = structuredClone(store);
     const pg = next.people.find((p) => p.id === person!.id)!.programs.find((p) => p.id === program!.id)!;
     const d = nextProgramDay(pg, currentDayId);
+    syncPairedProgram(next, person!.id, pg.id);
     setStore(next);
     go({ page: "day", person: person!.id, program: pg.id, day: d.id });
   }
@@ -677,18 +700,7 @@ function Trainer({ initial }: { initial: Store }) {
     } else if (modal.addWorkout)
       mutate((next) => addWorkoutExercises(next, current!.id, modal.selected));
     else if (modal.workout !== undefined) {
-      changeAppointment((a) => {
-        const ps =
-          a.mode === "shared" ? a.participants : [a.participants[a.selected]];
-        ps.forEach((p) => {
-          p.entries[modal.workout] = entry(
-            store,
-            p.personId,
-            modal.selected[0],
-            { setId: p.entries[modal.workout].setId, optional: p.entries[modal.workout].optional },
-          );
-        });
-      });
+      mutate((next) => replaceWorkoutExercise(next, current!.id, modal.workout, modal.selected[0]));
     } else
       editProgram((p) => {
         const d = p.days.find((d) => d.id === route.day)!;
@@ -1048,7 +1060,7 @@ function Trainer({ initial }: { initial: Store }) {
                     <span className={"badge " + (pg.active ? "warm" : "")}>
                       {pg.active ? "Активная" : "В архиве"}
                     </span>
-                    <h2>{pg.name}</h2>
+                    <h2>{pg.name}</h2>{pg.partnerId && <p className="paired-program-label">Парная · {personById(pg.partnerId).name}</p>}
                     <p>
                       {quantity(pg.days.length, ["день", "дня", "дней"])} ·
                       Далее{" "}
@@ -1130,7 +1142,7 @@ function Trainer({ initial }: { initial: Store }) {
             )}
             <div className="context-person">
               <Avatar person={person} small />
-              <strong>{person.name}</strong>
+              <strong>{person.name}</strong>{program.partnerId && <span> + {personById(program.partnerId).name} · Парная программа</span>}
             </div>
             <div className="section-title">
               <h2>Дни программы</h2>
@@ -1271,9 +1283,10 @@ function Trainer({ initial }: { initial: Store }) {
                   >
                     <MoreHorizontal size={19} />
                   </button>
-                <ExerciseOptions items={dayItems} index={index} onChange={(items) => editProgram((pg) => {
+                  <ExerciseOptions compact items={dayItems} index={index} onChange={(items) => editProgram((pg) => {
                     pg.days.find((d) => d.id === day.id)!.options = Object.fromEntries(items.map(({ id, equipment, setId, optional }) => [id, { equipment, setId, optional }]));
                   })} />
+                  {latestResults(id, dayItems[index].equipment, [person.id, ...(program!.partnerId ? [program!.partnerId] : [])])}
                 </article>
               ))}
             </div>
@@ -1481,7 +1494,7 @@ function Trainer({ initial }: { initial: Store }) {
                         onClick={() => openPicker(e.id, index)}
                       >
                         <ArrowLeftRight size={16} />
-                        Заменить только сегодня
+                        Заменить упражнение
                       </button>
                       <button className="text danger remove-today"
                         disabled={current.mode === "shared" ? current.participants.some((p) => p.status !== "active") : activeParticipant.status !== "active"}
@@ -1614,13 +1627,9 @@ function Trainer({ initial }: { initial: Store }) {
               <Preparation
                 participant={activeParticipant}
                 exercises={store.exercises}
-                onOptions={(items) => changeAppointment((a) => {
-                  const targets = a.mode === "shared" ? a.participants : [a.participants[a.selected]];
-                  targets.forEach((p) => p.entries.forEach((e) => {
-                    const options = items.find((x) => x.id === e.id);
-                    if (options) { e.equipment = options.equipment; e.setId = options.setId; e.optional = options.optional; }
-                  }));
-                })}
+                onMenu={(id) => setModal({ type: "prepare-exercise-menu", id })}
+                renderResults={(e) => latestResults(e.id, e.equipment, current.mode === "shared" ? current.participants.map((p) => p.personId) : [activeParticipant.personId])}
+                onOptions={changePreparationOptions}
                 onChange={(ids) =>
                   mutate((next) => prepareExercises(next, current.id, ids))
                 }
@@ -1955,7 +1964,7 @@ function Trainer({ initial }: { initial: Store }) {
               {modal.type === "remove-workout-exercise" && (
                 <>
                   <h2>Удалить из занятия?</h2>
-                  <p>{ex(modal.id).name}. Программа и прошлые результаты сохранятся.{current?.mode === "shared" ? " Упражнение будет убрано у обоих участников." : ""}</p>
+                  <p>{ex(modal.id).name}. Список упражнений в исходной программе тоже обновится, если занятие связано с программой. Прошлые результаты сохранятся.{current?.mode === "shared" ? " Упражнение будет убрано у обоих участников." : ""}</p>
                   <button className="btn destructive full" onClick={() => {
                     const appointmentId = current!.id, exerciseId = modal.id;
                     const removed = (current!.mode === "shared" ? current!.participants : [activeParticipant!]).map((p) => ({ personId: p.personId, index: p.entries.findIndex((e) => e.id === exerciseId), entry: structuredClone(p.entries.find((e) => e.id === exerciseId)!), groupMembers: p.entries.filter((e) => e.setId && e.setId === p.entries.find((x) => x.id === exerciseId)?.setId).map((e) => e.id) }));
@@ -1974,8 +1983,9 @@ function Trainer({ initial }: { initial: Store }) {
                         if (openedId) p.opened = p.entries.findIndex((e) => e.id === openedId);
                         if (a.mode === "shared" && p === a.participants[0] && sharedId) a.sharedOpened = p.entries.findIndex((e) => e.id === sharedId);
                       });
+                      syncWorkoutPrograms(next, a.id, removed.map((r) => r.personId));
                     });
-                    changeAppointment((a) => removeWorkoutExercise(a, modal.personId, modal.id));
+                    mutate((next) => removeWorkoutExercise(next.appointments.find((a) => a.id === current!.id)!, modal.personId, modal.id, next));
                     setModal(null); flash("Упражнение убрано из занятия");
                   }}>Удалить упражнение</button>
                 </>
@@ -2028,6 +2038,10 @@ function Trainer({ initial }: { initial: Store }) {
                         sharedOpened: 0,
                         prepared: !!modal.prepared && modal.participants.every((p: Participant) => p.entries.length),
                       };
+                      if (!modal.prepared && a.participants.length === 2) {
+                        const programs = a.participants.map((p) => store.people.find((x) => x.id === p.personId)?.programs.find((pg) => pg.active));
+                        if (programs[0]?.pairId && programs[0].pairId === programs[1]?.pairId) a.mode = "shared";
+                      }
                       if (a.mode === "shared" && a.participants.length === 2) {
                         const source =
                           a.participants.find((p) => p.entries.length) ??
@@ -2458,6 +2472,20 @@ function Trainer({ initial }: { initial: Store }) {
                   )}
                 </>
               )}
+              {modal.type === "prepare-exercise-menu" && activeParticipant && <>
+                <h2>{ex(modal.id).name}</h2>
+                <ExerciseOptions items={activeParticipant.entries} index={activeParticipant.entries.findIndex((e) => e.id === modal.id)} showAdditional={false} onChange={changePreparationOptions} />
+                <button className="btn primary full" onClick={() => setModal(null)}>Готово</button>
+              </>}
+              {modal.type === "link-partner" && <>
+                <h2>Парная программа</h2><p>Упражнения общие, результаты каждого сохраняются отдельно.</p>
+                <label className="field"><span>Второй участник</span><select value={modal.partner ?? ""} onChange={(event) => setModal({ ...modal, partner: event.target.value })}>
+                  <option value="">Выберите клиента</option>{store.people.filter((p) => p.id !== person!.id && !p.archivedAt).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select></label>
+                <button className="btn primary full" disabled={!modal.partner} onClick={() => {
+                  mutate((next) => linkProgramPartner(next, person!.id, program!.id, modal.partner));setModal(null);flash("Программа стала общей для двух участников");
+                }}>Сделать парной</button>
+              </>}
               {(modal.type === "new-program" || modal.type === "new-day") && (
                 <>
                   <h2>
@@ -2475,9 +2503,15 @@ function Trainer({ initial }: { initial: Store }) {
                       }
                     />
                   </label>
+                  {modal.type === "new-program" && <>
+                    <label className="optional-toggle"><input type="checkbox" checked={!!modal.pair} onChange={(event) => setModal({ ...modal, pair: event.target.checked, partner: "" })} />Парная программа</label>
+                    {modal.pair && <label className="field"><span>Второй участник</span><select value={modal.partner ?? ""} onChange={(event) => setModal({ ...modal, partner: event.target.value })}>
+                      <option value="">Выберите клиента</option>{store.people.filter((p) => p.id !== person!.id && !p.archivedAt).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select></label>}
+                  </>}
                   <button
                     className="btn primary full"
-                    disabled={!modal.name.trim()}
+                    disabled={!modal.name.trim() || (modal.type === "new-program" && modal.pair && !modal.partner)}
                     onClick={() => {
                       if (modal.type === "new-day") {
                         const d = {
@@ -2496,8 +2530,9 @@ function Trainer({ initial }: { initial: Store }) {
                           const p = next.people.find(
                             (p) => p.id === person!.id,
                           )!;
-                          p.programs.forEach((pg) => (pg.active = false));
                           p.programs.push(pg);
+                          setProgramActive(next, p.id, pg.id, true);
+                          if (modal.pair) linkProgramPartner(next, p.id, pg.id, modal.partner);
                         });
                         go({
                           page: "day",
@@ -2514,7 +2549,7 @@ function Trainer({ initial }: { initial: Store }) {
               )}
               {modal.type === "program-menu" && (
                 <>
-                  <h2>Программа</h2>
+                  <h2>Программа</h2>{!program!.pairId && <button className="menu-item" onClick={() => setModal({ type: "link-partner", partner: "" })}><Users size={19} />Сделать парной</button>}
                   <button
                     className="menu-item"
                     onClick={() =>
@@ -2542,6 +2577,7 @@ function Trainer({ initial }: { initial: Store }) {
                       mutate((next) =>
                         next.templates.push({
                           ...structuredClone(program!),
+                          pairId: undefined, partnerId: undefined,
                           id: uid(),
                           next: 0,
                         }),
@@ -2556,13 +2592,7 @@ function Trainer({ initial }: { initial: Store }) {
                   <button
                     className="menu-item"
                     onClick={() => {
-                      mutate((next) => {
-                        const p = next.people.find((p) => p.id === person!.id)!;
-                        p.programs.forEach((pg) => {
-                          pg.active =
-                            pg.id === program!.id ? !pg.active : false;
-                        });
-                      });
+                      mutate((next) => setProgramActive(next, person!.id, program!.id, !program!.active));
                       setModal(null);
                     }}
                   >
@@ -2603,6 +2633,7 @@ function Trainer({ initial }: { initial: Store }) {
                         )!;
                         p.programs.push({
                           ...structuredClone(modal.source),
+                          pairId: undefined, partnerId: undefined,
                           id: uid(),
                           name: modal.source.name + " · копия",
                           active: !p.programs.some((pg) => pg.active),
@@ -2731,6 +2762,7 @@ function Trainer({ initial }: { initial: Store }) {
                           id: uid(),
                           name: day!.name + " · копия",
                         });
+                        syncPairedProgram(next, p.id, pg.id);
                       });
                       setModal(null);
                       flash("День скопирован");
@@ -2743,6 +2775,9 @@ function Trainer({ initial }: { initial: Store }) {
               {modal.type === "exercise-menu" && (
                 <>
                   <h2>{ex(modal.id).name}</h2>
+                  <ExerciseOptions items={dayItems} index={dayItems.findIndex((e) => e.id === modal.id)} showAdditional={false} onChange={(items) => editProgram((pg) => {
+                    pg.days.find((d) => d.id === day!.id)!.options = Object.fromEntries(items.map(({ id, equipment, setId, optional }) => [id, { equipment, setId, optional }]));
+                  })} />
                   <button
                     className="menu-item"
                     onClick={() => openPicker(modal.id)}
@@ -2778,6 +2813,7 @@ function Trainer({ initial }: { initial: Store }) {
                           });
                           const items = target.exercises.map((id) => ({ id, ...target.options?.[id] })); normalizeSets(items);
                           target.options = Object.fromEntries(items.map(({ id, ...options }) => [id, options]));
+                          syncPairedProgram(next, personId, programId);
                         }
                       });
                       editProgram((pg) => {

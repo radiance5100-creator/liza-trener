@@ -31,6 +31,8 @@ export function setExerciseGroup<T extends { id: string; setId?: string }>(items
   normalizeSets(next); return next;
 }
 export type Program = {
+  pairId?: string;
+  partnerId?: string;
   id: string;
   name: string;
   days: Day[];
@@ -123,6 +125,72 @@ export const newProgram = (name = "Текущая программа"): Program 
   next: 0,
   days: [],
 });
+export function pairedProgram(store: Store, ownerId: string, program: Program) {
+  return program.pairId && program.partnerId ? store.people.find((p) => p.id === program.partnerId)?.programs.find((p) => p.pairId === program.pairId && p.partnerId === ownerId) : undefined;
+}
+export function syncPairedProgram(store: Store, ownerId: string, programId: string) {
+  const program = store.people.find((p) => p.id === ownerId)?.programs.find((p) => p.id === programId);
+  if (!program) return;
+  const peer = pairedProgram(store, ownerId, program);
+  if (!peer) return;
+  const nextDay = peer.days[peer.next]?.id;
+  peer.name = program.name;
+  peer.days = structuredClone(program.days);
+  const index = peer.days.findIndex((d) => d.id === nextDay);
+  peer.next = index >= 0 ? index : Math.min(peer.next, Math.max(0, peer.days.length - 1));
+}
+export function setProgramActive(store: Store, ownerId: string, programId: string, active: boolean) {
+  const owner = store.people.find((p) => p.id === ownerId)!;
+  const program = owner.programs.find((p) => p.id === programId)!;
+  const peer = pairedProgram(store, ownerId, program);
+  if (active) {
+    const owners = [owner, ...(peer ? [store.people.find((p) => p.id === program.partnerId)!] : [])];
+    owners.forEach((person) => person.programs.filter((p) => p.active && p !== program && p !== peer).forEach((p) => {
+      p.active = false; const other = pairedProgram(store, person.id, p); if (other) other.active = false;
+    }));
+  }
+  program.active = active; if (peer) peer.active = active;
+}
+export function linkProgramPartner(store: Store, ownerId: string, programId: string, partnerId: string) {
+  const owner = store.people.find((p) => p.id === ownerId), partner = store.people.find((p) => p.id === partnerId);
+  const program = owner?.programs.find((p) => p.id === programId);
+  if (!program || !partner || partner.archivedAt || ownerId === partnerId) throw new Error("Выберите второго участника");
+  if (program.pairId) throw new Error("У этой программы уже есть второй участник");
+  program.pairId = uid(); program.partnerId = partnerId;
+  partner.programs.push({ ...structuredClone(program), id: uid(), partnerId: ownerId, next: program.next, active: false });
+  setProgramActive(store, ownerId, programId, program.active);
+}
+export function syncWorkoutPrograms(store: Store, appointmentId: string, personIds?: string[]) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "active") return;
+  a.participants.filter((p) => p.status === "active" && (!personIds || personIds.includes(p.personId))).forEach((p) => {
+    const pg = store.people.find((x) => x.id === p.personId)?.programs.find((pg) => pg.id === p.programId);
+    const day = pg?.days.find((d) => d.id === p.dayId);
+    if (!day || !pg) return;
+    day.exercises = p.entries.map((e) => e.id);
+    day.options = Object.fromEntries(p.entries.map(({ id, equipment, setId, optional }) => [id, {
+      ...(equipment !== undefined ? { equipment } : {}), ...(setId !== undefined ? { setId } : {}), ...(optional !== undefined ? { optional } : {}),
+    }]));
+    syncPairedProgram(store, p.personId, pg.id);
+  });
+}
+export function replaceWorkoutExercise(store: Store, appointmentId: string, index: number, newId: string) {
+  const a = store.appointments.find((a) => a.id === appointmentId);
+  if (!a || a.status !== "active" || !store.exercises.some((e) => e.id === newId)) return;
+  const targets = a.mode === "shared" ? a.participants : [a.participants[a.selected]];
+  if (targets.some((p) => p.status !== "active" || !p.entries[index] || p.entries.some((e) => e.id === newId))) return;
+  targets.forEach((p) => { p.entries[index] = entry(store, p.personId, newId, { setId: p.entries[index].setId, optional: p.entries[index].optional }); });
+  syncWorkoutPrograms(store, a.id, targets.map((p) => p.personId));
+}
+export function correctLatestResult(store: Store, personId: string, exerciseId: string, equipment: ExerciseOptions["equipment"], weight: string, reps: string) {
+  if (!weight.trim() || !reps.trim()) throw new Error("Укажите вес и повторы");
+  const latest = resultHistory(store, personId, exerciseId).filter((r) => (r.equipment || "") === (equipment || "")).at(-1);
+  if (!latest) throw new Error("Сохранённого результата пока нет");
+  const matches = (r: RecordValue | Entry) => r.id === exerciseId && (r.equipment || "") === (equipment || "") && r.weight === latest.weight && r.reps === latest.reps;
+  const session = store.sessions.filter((s) => s.personId === personId && s.date === latest.date && s.results.some((r) => r.done && matches(r))).at(-1);
+  if (session) correctResult(store, personId, session.id, session.results.reduce((last, r, i) => r.done && matches(r) ? i : last, -1), weight, reps);
+  else store.people.find((p) => p.id === personId)?.records.filter((r) => r.date === latest.date && matches(r)).forEach((r) => { r.weight = weight.trim(); r.reps = reps.trim(); });
+}
 export function emptyStore(): Store {
   return {
     version: 2,
@@ -263,6 +331,7 @@ export function addWorkoutExercises(
     if (added.length) p.opened = first;
   });
   if (added.length && a.mode === "shared") a.sharedOpened = first;
+  if (added.length) syncWorkoutPrograms(store, a.id, targets.map((p) => p.personId));
 }
 export function removePerson(store: Store, id: string) {
   if (id === "self") throw new Error("Карточку «Я» нельзя удалить");
@@ -297,7 +366,7 @@ export function restorePerson(store: Store, id: string) {
   if (!person) throw new Error("Карточка клиента не найдена");
   delete person.archivedAt;
 }
-export function removeWorkoutExercise(a: Appointment, personId: string, exerciseId: string) {
+export function removeWorkoutExercise(a: Appointment, personId: string, exerciseId: string, store?: Store) {
   if (a.status !== "active") throw new Error("Занятие уже закрыто");
   const targets = a.mode === "shared" ? a.participants : a.participants.filter((p) => p.personId === personId);
   if (!targets.length || targets.some((p) => p.status !== "active"))
@@ -314,6 +383,7 @@ export function removeWorkoutExercise(a: Appointment, personId: string, exercise
     const index = a.participants[0].entries.findIndex((e) => e.id === sharedId);
     a.sharedOpened = index >= 0 ? index : Math.min(a.sharedOpened, Math.max(0, a.participants[0].entries.length - 1));
   }
+  if (store) syncWorkoutPrograms(store, a.id, targets.map((p) => p.personId));
 }
 export function startAppointment(store: Store, id: string): string {
   const a = store.appointments.find((a) => a.id === id)!;
@@ -500,9 +570,11 @@ export function prepareDay(store: Store, appointmentId: string, dayId: string) {
   if (a.mode === "shared")
     a.participants.forEach((p, i) => {
       if (i !== a.selected) {
-        p.programId = undefined;
-        p.dayId = undefined;
-        p.dayName = chosen.dayName + " · совместная";
+        const pg = store.people.find((x) => x.id === source.personId)?.programs.find((pg) => pg.id === chosen.programId);
+        const peer = pg?.partnerId === p.personId ? pairedProgram(store, source.personId, pg) : undefined;
+        p.programId = peer?.id;
+        p.dayId = peer ? chosen.dayId : undefined;
+        p.dayName = peer ? chosen.dayName : chosen.dayName + " · совместная";
       }
     });
   prepareExercises(
@@ -525,9 +597,11 @@ export function prepareMode(
     const source = a.participants[a.selected];
     a.participants.forEach((p, i) => {
       if (i !== a.selected) {
-        p.programId = undefined;
-        p.dayId = undefined;
-        p.dayName = source.dayName + " · совместная";
+        const pg = store.people.find((x) => x.id === source.personId)?.programs.find((pg) => pg.id === source.programId);
+        const peer = pg?.partnerId === p.personId ? pairedProgram(store, source.personId, pg) : undefined;
+        p.programId = peer?.id;
+        p.dayId = peer ? source.dayId : undefined;
+        p.dayName = peer ? source.dayName : source.dayName + " · совместная";
       }
     });
     prepareExercises(
@@ -774,6 +848,7 @@ export function validateStore(value: unknown): Store {
     obj(p) &&
     str(p.id) &&
     str(p.name) &&
+    ((p.pairId === undefined && p.partnerId === undefined) || (str(p.pairId) && p.pairId.length > 0 && str(p.partnerId))) &&
     typeof p.active === "boolean" &&
     Number.isInteger(p.next) &&
     p.next >= 0 &&
@@ -828,6 +903,7 @@ export function validateStore(value: unknown): Store {
   )
     fail();
   const person = (id: any) => s.people.some((p) => p.id === id);
+  if (s.people.some((owner) => owner.programs.some((p) => p.pairId && (p.partnerId === owner.id || !pairedProgram(s, owner.id, p)))) || s.templates.some((p) => p.pairId || p.partnerId)) fail();
   const validEntry = (e: any) =>
     obj(e) &&
     hasExercise(e.id) &&

@@ -12,6 +12,39 @@ function load(name) {
 }
 const t=load('training');
 
+test('permanent paired programs synchronize structure and activation while preserving personal results and cycles',()=>{
+ const s=fixture(),pg=s.people[0].programs[0],records=JSON.stringify(s.people.map(p=>p.records));
+ t.linkProgramPartner(s,'self',pg.id,'c1');const peer=t.pairedProgram(s,'self',pg);assert.ok(peer);assert.equal(peer.partnerId,'self');assert.equal(peer.active,true);assert.equal(s.people[1].programs.filter(p=>p.active).length,1);
+ peer.next=1;pg.name='Общая программа';pg.days[0].options={e1:{equipment:'barbell',optional:true}};pg.days.push({id:'third',name:'В',exercises:['e2']});t.syncPairedProgram(s,'self',pg.id);
+ assert.equal(peer.name,pg.name);assert.deepEqual(peer.days,pg.days);assert.equal(peer.next,1);assert.equal(JSON.stringify(s.people.map(p=>p.records)),records);
+ t.setProgramActive(s,'self',pg.id,false);assert.equal(peer.active,false);t.setProgramActive(s,'c1',peer.id,true);assert.equal(pg.active,true);assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);
+ const bad=structuredClone(s);bad.people[0].programs[0].partnerId='missing';assert.throws(()=>t.validateStore(bad));
+});
+
+test('live paired workout replacement, deletion and addition update both programs without rewriting history',()=>{
+ const s=fixture(),pg=s.people[0].programs[0];t.linkProgramPartner(s,'self',pg.id,'c1');const peer=t.pairedProgram(s,'self',pg);
+ s.exercises.push({...structuredClone(s.exercises[0]),id:'extra',name:'Новое упражнение'});
+ const history=JSON.stringify(s.sessions),otherDay=JSON.stringify(pg.days[1]);const a=t.appointment(s,['self','c1'],'10:00');s.appointments.push(a);a.mode='shared';t.prepareDay(s,a.id,pg.days[0].id);
+ assert.equal(a.participants[1].programId,peer.id);assert.equal(a.participants[1].dayId,pg.days[0].id);t.startAppointment(s,a.id);
+ t.replaceWorkoutExercise(s,a.id,0,'extra');assert.deepEqual(pg.days[0].exercises,['extra','e2']);assert.deepEqual(peer.days[0].exercises,pg.days[0].exercises);
+ t.removeWorkoutExercise(a,'self','e2',s);assert.deepEqual(pg.days[0].exercises,['extra']);t.addWorkoutExercises(s,a.id,['e1']);assert.deepEqual(pg.days[0].exercises,['extra','e1']);assert.deepEqual(peer.days[0].exercises,pg.days[0].exercises);
+ assert.equal(JSON.stringify(s.sessions),history);assert.equal(JSON.stringify(pg.days[1]),otherDay);assert.equal(pg.next,0);assert.deepEqual(t.migrate(JSON.parse(JSON.stringify(s))),s);
+});
+
+test('permanent pair advances both cycles once while an unrelated shared guest keeps their program intact',()=>{
+ const s=fixture(),pg=s.people[0].programs[0];t.linkProgramPartner(s,'self',pg.id,'c1');const peer=t.pairedProgram(s,'self',pg),a=t.appointment(s,['self','c1'],'10:00');a.mode='shared';s.appointments.push(a);t.prepareDay(s,a.id,pg.days[0].id);t.startAppointment(s,a.id);
+ a.participants.forEach((p,i)=>{p.entries[0].weight=String(10+i);p.entries[0].reps='8';});t.confirmSharedEntry(a,0);t.finish(s,a.id,'self');t.finish(s,a.id,'c1');t.finish(s,a.id,'c1');assert.equal(pg.next,1);assert.equal(peer.next,1);assert.equal(t.resultHistory(s,'self','e1').at(-1).weight,'10');assert.equal(t.resultHistory(s,'c1','e1').at(-1).weight,'11');
+ const plain=fixture(),b=t.appointment(plain,['self','c1'],'12:00');plain.appointments.push(b);b.mode='shared';t.prepareDay(plain,b.id,'d1');const guest=JSON.stringify(plain.people[1].programs);t.startAppointment(plain,b.id);t.removeWorkoutExercise(b,'self','e2',plain);assert.equal(JSON.stringify(plain.people[1].programs),guest);
+});
+
+test('editing latest actual result targets the latest same-day session and leaves active drafts and cycle unchanged',()=>{
+ const s=fixture();s.exercises[0].equipment='barbell';let last;
+ for(const weight of ['20','30']) {const a=t.appointment(s,['self'],'10:00');a.participants[0]=t.participant(s,'self','d1');s.appointments.push(a);t.startAppointment(s,a.id);a.participants[0].entries[0].weight=weight;a.participants[0].entries[0].reps='8';t.confirmEntry(a,'self',0);t.finish(s,a.id,'self');last=a;}
+ const first=s.sessions.find(x=>x.id===s.appointments[0].id+':self'),draft=t.appointment(s,['self'],'12:00');draft.participants[0]=t.participant(s,'self','d1');s.appointments.push(draft);t.startAppointment(s,draft.id);draft.participants[0].entries[0].weight='100';
+ const savedDraft=JSON.stringify(draft),count=s.sessions.length,next=s.people[0].programs[0].next;
+ t.correctLatestResult(s,'self','e1','barbell','35','9');assert.equal(first.results[0].weight,'20');assert.equal(last.participants[0].entries[0].weight,'35');assert.equal(t.resultHistory(s,'self','e1').at(-1).weight,'35');assert.equal(JSON.stringify(draft),savedDraft);assert.equal(s.sessions.length,count);assert.equal(s.people[0].programs[0].next,next);assert.throws(()=>t.correctLatestResult(s,'self','e1','dumbbells','5','8'));
+});
+
 test('workout comments survive reload, synchronize a finished partner and remain editable until completion',()=>{
  const s=fixture(),a=t.appointment(s,['self','c1'],'10:00');s.appointments.push(a);t.startAppointment(s,a.id);
  t.setWorkoutComment(s,a.id,'Самочувствие хорошее\nСледить за техникой');

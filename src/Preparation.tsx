@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { GripVertical, Replace, Trash2, Plus } from "lucide-react";
+import { GripVertical, Replace, Trash2, Plus, MoreHorizontal } from "lucide-react";
+import type { ReactNode } from "react";
 import type { Exercise } from "./seed";
 import type { Participant } from "./training";
 import { ExerciseOptions, type OptionItem } from "./ExerciseOptions";
@@ -16,6 +17,8 @@ export function Preparation({
   doneLabel,
   doneDisabled,
   onOptions,
+  onMenu,
+  renderResults,
 }: {
   participant: Participant;
   exercises: Exercise[];
@@ -27,6 +30,8 @@ export function Preparation({
   doneLabel: string;
   doneDisabled: boolean;
   onOptions: (items: OptionItem[]) => void;
+  onMenu: (id: string) => void;
+  renderResults: (entry: Participant["entries"][number]) => ReactNode;
 }) {
   const drag = useRef<{ from: number; to: number } | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -109,7 +114,9 @@ export function Preparation({
               >
                 <Trash2 size={17} />
               </button>
-              <ExerciseOptions items={participant.entries} index={i} onChange={onOptions} />
+              <button className="icon" aria-label={"Настройки: " + e.name} onClick={() => onMenu(e.id)}><MoreHorizontal size={19} /></button>
+              <ExerciseOptions compact items={participant.entries} index={i} onChange={onOptions} />
+              {renderResults(e)}
             </article>
           );
         })}
